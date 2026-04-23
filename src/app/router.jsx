@@ -7,6 +7,7 @@ import Register from '../pages/Register'
 import Dashboard from '../pages/Dashboard'
 import Clients from '../pages/Clients'
 import Charges from '../pages/Charges'
+import Automations from '../pages/Automations'
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'clientes', element: <Clients /> },
       { path: 'cobrancas', element: <Charges /> },
+      { path: 'automacoes', element: <Automations /> },
     ],
   },
 ])

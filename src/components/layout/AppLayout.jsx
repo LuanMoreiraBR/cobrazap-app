@@ -1,5 +1,12 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Wallet, LogOut } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Users,
+  Wallet,
+  LogOut,
+  ArrowLeft,
+  BellRing,
+} from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
 const navClass = ({ isActive }) =>
@@ -22,25 +29,32 @@ export default function AppLayout() {
     <div className="min-h-screen bg-slate-50">
       <div className="grid min-h-screen md:grid-cols-[260px_1fr]">
         <aside className="border-r border-slate-200 bg-white p-5">
-          <Link to="/" className="mb-8 block">
-            <h1 className="text-2xl font-bold">Cobrança App</h1>
-            <p className="text-sm text-slate-500">MVP para autônomos</p>
+          <Link to="/app" className="mb-8 block">
+            <h1 className="text-2xl font-bold">CobraZap</h1>
+            <p className="text-sm text-slate-500">
+              Cobrança simples por WhatsApp
+            </p>
           </Link>
 
           <nav className="space-y-2">
-            <NavLink to="/" end className={navClass}>
+            <NavLink to="/app" end className={navClass}>
               <LayoutDashboard size={18} />
               Dashboard
             </NavLink>
 
-            <NavLink to="/clientes" className={navClass}>
+            <NavLink to="/app/clientes" className={navClass}>
               <Users size={18} />
               Clientes
             </NavLink>
 
-            <NavLink to="/cobrancas" className={navClass}>
+            <NavLink to="/app/cobrancas" className={navClass}>
               <Wallet size={18} />
               Cobranças
+            </NavLink>
+
+            <NavLink to="/app/automacoes" className={navClass}>
+              <BellRing size={18} />
+              Automações
             </NavLink>
           </nav>
 
@@ -49,13 +63,23 @@ export default function AppLayout() {
             <p className="font-semibold">{user?.email ?? 'Não logado'}</p>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <LogOut size={16} />
-            Sair
-          </button>
+          <div className="mt-4 space-y-3">
+            <Link
+              to="/"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              <ArrowLeft size={16} />
+              Ver landing page
+            </Link>
+
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              <LogOut size={16} />
+              Sair
+            </button>
+          </div>
         </aside>
 
         <main className="p-6 md:p-8">
