@@ -187,7 +187,7 @@ export default function Clients() {
         ) : null}
 
         {success ? (
-          <p className="text-sm text-emerald-600 md:col-span-2">{success}</p>
+          <p className="text-sm text-[#7C6CFF] md:col-span-2">{success}</p>
         ) : null}
 
         <div className="flex flex-wrap gap-3 md:col-span-2">
