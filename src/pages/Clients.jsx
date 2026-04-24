@@ -180,15 +180,20 @@ export default function Clients() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-gradient-to-r from-[#070D2D] via-[#161B4D] to-[#5B4BFF] p-6 text-white shadow-sm">
-        <p className="text-sm font-semibold text-[#AFA8FF]">
-          Base de relacionamento
-        </p>
-        <h1 className="mt-2 text-3xl font-bold">Clientes</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-200">
-          Organize seus contatos, telefones e observações para enviar cobranças
-          com mais controle e profissionalismo.
-        </p>
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
+            Base de relacionamento
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Clientes</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Gerencie seus clientes e organize seus contatos.
+          </p>
+        </div>
+
+        <div className="hidden rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF] md:block">
+          <Users size={22} />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

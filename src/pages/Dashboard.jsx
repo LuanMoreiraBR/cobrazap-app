@@ -7,6 +7,10 @@ import {
   TrendingUp,
   Wallet,
 } from 'lucide-react'
+import PeriodFilter, {
+  getTodayInputDate,
+  isInsidePeriod,
+} from '../components/ui/PeriodFilter'
 import { useAuth } from '../contexts/AuthContext'
 import { getCharges } from '../services/chargesService'
 import { formatCurrency, formatDate } from '../utils/format'
@@ -83,6 +87,8 @@ export default function Dashboard() {
   const { user } = useAuth()
   const [charges, setCharges] = useState([])
   const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState('month')
+  const [referenceDate, setReferenceDate] = useState(getTodayInputDate())
 
   useEffect(() => {
     async function loadCharges() {
@@ -111,10 +117,16 @@ export default function Dashboard() {
     }))
   }, [charges])
 
-  const pending = enrichedCharges.filter((item) => item.computedStatus === 'pendente')
-  const overdue = enrichedCharges.filter((item) => item.computedStatus === 'atrasado')
-  const paid = enrichedCharges.filter((item) => item.computedStatus === 'pago')
-  const dueToday = enrichedCharges.filter(
+  const periodCharges = useMemo(() => {
+    return enrichedCharges.filter((charge) =>
+      isInsidePeriod(charge.created_at || charge.due_date, period, referenceDate),
+    )
+  }, [enrichedCharges, period, referenceDate])
+
+  const pending = periodCharges.filter((item) => item.computedStatus === 'pendente')
+  const overdue = periodCharges.filter((item) => item.computedStatus === 'atrasado')
+  const paid = periodCharges.filter((item) => item.computedStatus === 'pago')
+  const dueToday = periodCharges.filter(
     (item) => item.computedStatus !== 'pago' && isToday(item.due_date),
   )
 
@@ -125,40 +137,49 @@ export default function Dashboard() {
 
   const totalPaid = paid.reduce((acc, item) => acc + Number(item.amount), 0)
   const totalGeneral = totalOpen + totalPaid
-  const paidPercent = totalGeneral > 0 ? Math.round((totalPaid / totalGeneral) * 100) : 0
-  const openPercent = totalGeneral > 0 ? Math.round((totalOpen / totalGeneral) * 100) : 0
+  const paidPercent =
+    totalGeneral > 0 ? Math.round((totalPaid / totalGeneral) * 100) : 0
+  const openPercent =
+    totalGeneral > 0 ? Math.round((totalOpen / totalGeneral) * 100) : 0
 
-  const nextCharges = [...enrichedCharges]
+  const nextCharges = [...periodCharges]
     .filter((charge) => charge.computedStatus !== 'pago')
     .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
     .slice(0, 6)
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-gradient-to-r from-[#070D2D] via-[#161B4D] to-[#5B4BFF] p-6 text-white shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[#AFA8FF]">
-              Painel financeiro
-            </p>
-            <h1 className="mt-2 text-3xl font-bold">Dashboard</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-200">
-              Acompanhe cobranças, recebimentos, atrasos e lembretes em um painel claro e profissional.
-            </p>
-          </div>
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div>
+          
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
+            Painel financeiro
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Visão geral das cobranças, recebimentos e indicadores.
+          </p>
+        </div>
 
-          <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
-            <p className="text-sm text-slate-200">Total recebido</p>
-            <p className="mt-1 text-2xl font-bold">{formatCurrency(totalPaid)}</p>
-          </div>
+        <div className="hidden rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF] md:block">
+          <Wallet size={22} />
         </div>
       </div>
+
+      <PeriodFilter
+        period={period}
+        setPeriod={setPeriod}
+        referenceDate={referenceDate}
+        setReferenceDate={setReferenceDate}
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <DashboardCard
           title="Em aberto"
           value={pending.length}
-          subtitle={formatCurrency(pending.reduce((acc, item) => acc + Number(item.amount), 0))}
+          subtitle={formatCurrency(
+            pending.reduce((acc, item) => acc + Number(item.amount), 0),
+          )}
           icon={Clock3}
           color="amber"
         />
@@ -166,7 +187,9 @@ export default function Dashboard() {
         <DashboardCard
           title="Atrasadas"
           value={overdue.length}
-          subtitle={formatCurrency(overdue.reduce((acc, item) => acc + Number(item.amount), 0))}
+          subtitle={formatCurrency(
+            overdue.reduce((acc, item) => acc + Number(item.amount), 0),
+          )}
           icon={AlertTriangle}
           color="red"
         />
@@ -204,7 +227,7 @@ export default function Dashboard() {
                 Resumo financeiro
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Distribuição entre valores recebidos e pendentes.
+                Distribuição entre valores recebidos e pendentes no período.
               </p>
             </div>
 
@@ -272,7 +295,7 @@ export default function Dashboard() {
                 Próximas cobranças
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Cobranças pendentes ordenadas por vencimento.
+                Cobranças pendentes do período selecionado.
               </p>
             </div>
 
@@ -289,7 +312,7 @@ export default function Dashboard() {
                   Nenhuma cobrança pendente
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Quando houver cobranças abertas, elas aparecerão aqui.
+                  Quando houver cobranças abertas no período, elas aparecerão aqui.
                 </p>
               </div>
             ) : (

@@ -10,6 +10,31 @@ function addDays(dateString, days) {
   return date.toISOString()
 }
 
+export function buildAutomationMessage({
+  clientName,
+  description,
+  amount,
+  dueDate,
+  messageType,
+}) {
+  const value = new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(amount || 0))
+
+  const date = new Date(`${dueDate}T00:00:00`).toLocaleDateString('pt-BR')
+
+  if (messageType === 'urgent') {
+    return `Olá ${clientName}, tudo bem? Identificamos que o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}, ainda está pendente. Poderia verificar, por gentileza?`
+  }
+
+  if (messageType === 'professional') {
+    return `Olá ${clientName}, tudo bem? Passando para lembrar sobre o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Ficamos à disposição.`
+  }
+
+  return `Olá ${clientName}, tudo bem? Só passando para lembrar do pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Qualquer dúvida, fico à disposição.`
+}
+
 export function buildDefaultRules(selectedRules) {
   const rules = []
 
@@ -73,11 +98,31 @@ export function buildScheduledDate(dueDate, rule) {
   return toMiddayIso(dueDate)
 }
 
+async function getClientById(clientId, userId) {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name, phone')
+    .eq('id', clientId)
+    .eq('user_id', userId)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export async function replaceAutomationForCharge({
   user_id,
   charge,
   rules,
 }) {
+  const clientId = charge.client_id || charge.client?.id
+
+  if (!clientId) {
+    throw new Error('Cliente não encontrado para gerar automação.')
+  }
+
+  const client = charge.client || (await getClientById(clientId, user_id))
+
   const { error: deleteRulesError } = await supabase
     .from('automation_rules')
     .delete()
@@ -116,10 +161,18 @@ export async function replaceAutomationForCharge({
   const scheduledRows = createdRules.map((rule) => ({
     user_id,
     charge_id: charge.id,
-    client_id: charge.client_id || charge.client?.id,
+    client_id: client.id,
     automation_rule_id: rule.id,
     scheduled_for: buildScheduledDate(charge.due_date, rule),
     message_type: rule.message_type,
+    message_text: buildAutomationMessage({
+      clientName: client.name,
+      description: charge.description,
+      amount: charge.amount,
+      dueDate: charge.due_date,
+      messageType: rule.message_type,
+    }),
+    phone: client.phone,
     status: 'pending',
   }))
 
@@ -148,7 +201,48 @@ export async function getScheduledMessages(userId) {
       )
     `)
     .eq('user_id', userId)
-    .order('scheduled_for', { ascending: true })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function cancelPendingMessagesForCharge(chargeId, userId) {
+  const { error } = await supabase
+    .from('scheduled_messages')
+    .update({
+      status: 'cancelled',
+      error_message: 'Cobrança marcada como paga.',
+    })
+    .eq('charge_id', chargeId)
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+
+  if (error) throw error
+}
+export async function retryScheduledMessage(messageId, userId) {
+  const { error } = await supabase
+    .from('scheduled_messages')
+    .update({
+      status: 'pending',
+      error_message: null,
+      provider_message_id: null,
+      sent_at: null,
+      scheduled_for: new Date(Date.now() - 60 * 1000).toISOString(),
+    })
+    .eq('id', messageId)
+    .eq('user_id', userId)
+
+  if (error) throw error
+}
+
+export async function runScheduledWhatsAppSender() {
+  const { data, error } = await supabase.functions.invoke(
+    'send-scheduled-whatsapp',
+    {
+      body: {},
+    },
+  )
 
   if (error) throw error
   return data

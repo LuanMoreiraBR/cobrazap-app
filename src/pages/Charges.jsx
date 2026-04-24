@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  HelpCircle,
   MessageCircle,
   Pencil,
   Search,
@@ -22,16 +23,51 @@ import {
 } from '../services/chargesService'
 import {
   buildDefaultRules,
+  cancelPendingMessagesForCharge,
   replaceAutomationForCharge,
 } from '../services/automationService'
 import { formatCurrency, formatDate } from '../utils/format'
 import { buildMessage, openWhatsApp } from '../utils/whatsapp'
 
+function getTodayInputDate() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+const automationTips = {
+  oneMonthBefore:
+    'Programa uma mensagem para 30 dias antes da data de vencimento.',
+  fifteenDaysBefore:
+    'Programa uma mensagem para 15 dias antes da data de vencimento.',
+  fiveDaysBefore:
+    'Programa uma mensagem para 5 dias antes da data de vencimento.',
+  onDueDate:
+    'Programa uma mensagem para o próprio dia do vencimento.',
+  afterDueDays:
+    'Informe quantos dias depois do vencimento o sistema deve enviar uma nova cobrança. Exemplo: 3 envia 3 dias após vencer.',
+  dueDate:
+    'Essa é a data base da cobrança. Todos os lembretes automáticos serão calculados a partir dela.',
+}
+
+function InfoTooltip({ text }) {
+  return (
+    <span className="group relative inline-flex">
+      <HelpCircle
+        size={15}
+        className="cursor-help text-slate-400 transition hover:text-[#5B4BFF]"
+      />
+
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-2xl bg-[#070D2D] px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg group-hover:block">
+        {text}
+      </span>
+    </span>
+  )
+}
+
 const initialForm = {
   client_id: '',
   description: '',
   amount: '',
-  due_date: '',
+  due_date: getTodayInputDate(),
   message_type: 'friendly',
   automation: {
     oneMonthBefore: false,
@@ -96,7 +132,10 @@ export default function Charges() {
   const [editingId, setEditingId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('todos')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = useState(() => ({
+  ...initialForm,
+  due_date: getTodayInputDate(),
+}))
 
   useEffect(() => {
     async function loadData() {
@@ -164,9 +203,12 @@ export default function Charges() {
   }
 
   function resetForm() {
-    setForm(initialForm)
-    setEditingId(null)
-  }
+  setForm({
+    ...initialForm,
+    due_date: getTodayInputDate(),
+  })
+  setEditingId(null)
+}
 
   function validateForm() {
     if (!form.client_id) return 'Selecione um cliente.'
@@ -275,23 +317,24 @@ export default function Charges() {
     }
   }
 
-  async function handleMarkAsPaid(id) {
-    resetMessages()
+      async function handleMarkAsPaid(id) {
+  resetMessages()
 
-    try {
-      await markChargeAsPaid(id, user.id)
+  try {
+    await markChargeAsPaid(id, user.id)
+    await cancelPendingMessagesForCharge(id, user.id)
 
-      setCharges((current) =>
-        current.map((charge) =>
-          charge.id === id ? { ...charge, status: 'pago' } : charge,
-        ),
-      )
+    setCharges((current) =>
+      current.map((charge) =>
+        charge.id === id ? { ...charge, status: 'pago' } : charge,
+      ),
+    )
 
-      setSuccess('Cobrança marcada como paga.')
-    } catch (err) {
-      setError(err.message || 'Erro ao atualizar cobrança')
-    }
+    setSuccess('Cobrança marcada como paga. Lembretes pendentes foram cancelados.')
+  } catch (err) {
+    setError(err.message || 'Erro ao atualizar cobrança')
   }
+}
 
   function handleSend(charge) {
     if (!charge.client) return
@@ -309,16 +352,21 @@ export default function Charges() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-gradient-to-r from-[#070D2D] via-[#161B4D] to-[#5B4BFF] p-6 text-white shadow-sm">
-        <p className="text-sm font-semibold text-[#AFA8FF]">
-          Gestão de recebimentos
-        </p>
-        <h1 className="mt-2 text-3xl font-bold">Cobranças</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-200">
-          Crie cobranças, programe lembretes automáticos e envie mensagens
-          profissionais pelo WhatsApp.
-        </p>
-      </div>
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
+  <div>
+    <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
+      Gestão de recebimentos
+    </p>
+    <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Cobranças</h1>
+    <p className="mt-1 text-sm text-slate-500">
+      Crie cobranças, programe lembretes automáticos e envie mensagens profissionais.
+    </p>
+  </div>
+
+  <div className="hidden rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF] md:block">
+    <Wallet size={22} />
+  </div>
+</div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatBox
@@ -407,12 +455,25 @@ export default function Charges() {
             className="input"
           />
 
-          <input
-            type="date"
-            value={form.due_date}
-            onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-            className="input md:col-span-2"
-          />
+          <div className="md:col-span-2">
+  <div className="mb-2 flex items-center gap-2">
+    <label className="text-sm font-semibold text-[#070D2D]">
+      Data de vencimento
+    </label>
+    <InfoTooltip text={automationTips.dueDate} />
+  </div>
+
+  <input
+    type="date"
+    value={form.due_date}
+    onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+    className="input"
+  />
+
+  <p className="mt-2 text-xs text-slate-500">
+    Os lembretes abaixo serão programados com base nessa data.
+  </p>
+</div>
         </div>
 
         <div className="mt-5 rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4">
@@ -437,7 +498,7 @@ export default function Charges() {
               ['fifteenDaysBefore', '15 dias antes'],
               ['fiveDaysBefore', '5 dias antes'],
               ['onDueDate', 'No dia do vencimento'],
-            ].map(([key, label]) => (
+                ].map(([key, label]) => (
               <label
                 key={key}
                 className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700 transition hover:border-[#5B4BFF]/40 hover:bg-white"
@@ -456,20 +517,26 @@ export default function Charges() {
                   }
                   className="h-4 w-4 accent-[#5B4BFF]"
                 />
-                <span>{label}</span>
+                <span className="flex items-center gap-2">
+              {label}
+               <InfoTooltip text={automationTips[key]} />
+                </span>
               </label>
             ))}
           </div>
 
           <div className="mt-4">
-            <label className="block text-sm font-medium text-slate-700">
-              Dias após o vencimento
-            </label>
+            <div className="flex items-center gap-2">
+  <label className="block text-sm font-medium text-slate-700">
+    Dias após o vencimento
+  </label>
+  <InfoTooltip text={automationTips.afterDueDays} />
+</div>
 
             <input
               type="number"
               min="0"
-              placeholder="Ex: 3"
+              placeholder="Ex: 3 dias depois do vencimento"
               value={form.automation.afterDueDays}
               onChange={(e) =>
                 setForm({
@@ -608,14 +675,19 @@ export default function Charges() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSend(charge)}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4A3BE8]"
-                      >
-                        <MessageCircle size={16} />
-                        WhatsApp
-                      </button>
+                          <button
+  type="button"
+  onClick={() => handleSend(charge)}
+  disabled={charge.computedStatus === 'pago'}
+  className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+    charge.computedStatus === 'pago'
+      ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+      : 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
+  }`}
+>
+  <MessageCircle size={16} />
+  {charge.computedStatus === 'pago' ? 'Pago' : 'WhatsApp'}
+</button>
 
                       {charge.computedStatus !== 'pago' ? (
                         <button

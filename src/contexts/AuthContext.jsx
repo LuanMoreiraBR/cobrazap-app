@@ -47,18 +47,26 @@ export function AuthProvider({ children }) {
 
   async function signOut() {
     await signOutService()
+    setUser(null)
   }
+
+  const displayName =
+  user?.user_metadata?.name?.trim() ||
+  user?.user_metadata?.full_name?.trim() ||
+  user?.email ||
+  'Usuário'
 
   const value = useMemo(
     () => ({
       user,
       loading,
       isAuthenticated: !!user,
+      displayName,
       signUp,
       signIn,
       signOut,
     }),
-    [user, loading],
+    [user, loading, displayName],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

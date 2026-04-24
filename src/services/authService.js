@@ -1,18 +1,31 @@
 import { supabase } from './supabaseClient'
 
 export async function signUp({ name, email, password }) {
+  const cleanName = name?.trim()
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
-        name: name?.trim(),
-        full_name: name?.trim(),
+        name: cleanName,
+        full_name: cleanName,
       },
     },
   })
 
   if (error) throw error
+
+  if (data.user?.id) {
+    const { error: profileError } = await supabase.from('profiles').upsert({
+      id: data.user.id,
+      name: cleanName || 'Usuário',
+      email,
+    })
+
+    if (profileError) throw profileError
+  }
+
   return data
 }
 
