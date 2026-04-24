@@ -10,8 +10,15 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
 
+const navItems = [
+  { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/app/clientes', label: 'Clientes', icon: Users },
+  { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
+  { to: '/app/automacoes', label: 'Automações', icon: BellRing },
+]
+
 const navClass = ({ isActive }) =>
-  `flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+  `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
     isActive
       ? 'bg-[#5B4BFF] text-white shadow-sm'
       : 'text-slate-700 hover:bg-[#5B4BFF]/10 hover:text-[#5B4BFF]'
@@ -20,8 +27,10 @@ const navClass = ({ isActive }) =>
 export default function AppLayout() {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
+
   const [profileName, setProfileName] = useState('')
-  const [openMenu, setOpenMenu] = useState(false)
+  const [openUserMenu, setOpenUserMenu] = useState(false)
+  const [openMobileMenu, setOpenMobileMenu] = useState(false)
 
   useEffect(() => {
     async function loadProfile() {
@@ -53,98 +62,154 @@ export default function AppLayout() {
     navigate('/login')
   }
 
+  function closeMobileMenu() {
+    setOpenMobileMenu(false)
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="grid min-h-screen md:grid-cols-[260px_1fr]">
-        <aside className="flex flex-col border-r border-slate-200 bg-white p-5">
-          <div className="mb-8 flex items-center gap-3">
-            <img
-              src="/icon-lembrei.png"
-              alt="Lembrei"
-              className="h-11 w-11 rounded-2xl bg-white shadow-sm"
-            />
+      {/* MENU MOBILE */}
+      <div className="fixed left-4 top-4 z-50 md:hidden">
+        <button
+          type="button"
+          onClick={() => setOpenMobileMenu((current) => !current)}
+          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200"
+        >
+          <img
+            src="/icon-lembrei.png"
+            alt="Lembrei"
+            className="h-8 w-8 rounded-xl"
+          />
+        </button>
 
-            <div>
-              <h1 className="text-2xl font-bold text-[#070D2D]">Lembrei</h1>
-              <p className="text-sm text-slate-500">Cobrança automática</p>
+        {openMobileMenu ? (
+          <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
+            <div className="mb-3 flex items-center gap-3 border-b border-slate-100 pb-3">
+              <img
+                src="/icon-lembrei.png"
+                alt="Lembrei"
+                className="h-9 w-9 rounded-xl"
+              />
+              <div>
+                <p className="font-bold text-[#070D2D]">Lembrei</p>
+                <p className="text-xs text-slate-500">Cobrança automática</p>
+              </div>
             </div>
+
+            <nav className="space-y-1">
+              {navItems.map((item) => {
+                const Icon = item.icon
+
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    onClick={closeMobileMenu}
+                    className={navClass}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </NavLink>
+                )
+              })}
+            </nav>
           </div>
+        ) : null}
+      </div>
 
-          <nav className="space-y-2">
-            <NavLink to="/app" end className={navClass}>
-              <LayoutDashboard size={18} />
-              Dashboard
-            </NavLink>
+      {/* USUÁRIO MOBILE */}
+      <div className="fixed right-4 top-4 z-50 md:hidden">
+        <button
+          type="button"
+          onClick={() => setOpenUserMenu((current) => !current)}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm"
+        >
+          {userInitial}
+        </button>
 
-            <NavLink to="/app/clientes" className={navClass}>
-              <Users size={18} />
-              Clientes
-            </NavLink>
-
-            <NavLink to="/app/cobrancas" className={navClass}>
-              <Wallet size={18} />
-              Cobranças
-            </NavLink>
-
-            <NavLink to="/app/automacoes" className={navClass}>
-              <BellRing size={18} />
-              Automações
-            </NavLink>
-          </nav>
-
-          <div className="mt-auto hidden space-y-3 pt-8 md:block">
-            <div className="rounded-2xl bg-[#5B4BFF]/10 p-4">
-              <p className="text-xs text-slate-500">Usuário atual</p>
-              <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
-                {userName}
-              </p>
-            </div>
+        {openUserMenu ? (
+          <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
+            <p className="text-xs text-slate-500">Usuário atual</p>
+            <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
+              {userName}
+            </p>
 
             <button
               type="button"
               onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
               Sair
             </button>
           </div>
-        </aside>
-
-        <main className="relative p-4 md:p-8">
-            <div className="fixed right-4 top-4 z-50 md:hidden">
-            <button
-              type="button"
-              onClick={() => setOpenMenu((current) => !current)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm"
-            >
-              {userInitial}
-            </button>
-
-            {openMenu ? (
-              <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
-                <p className="text-xs text-slate-500">Usuário atual</p>
-                <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
-                  {userName}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
-                >
-                  <LogOut size={15} />
-                  Sair
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-         <div className="pt-12 md:pt-0">
-            <Outlet />
-          </div>
-        </main>
+        ) : null}
       </div>
+
+      {/* SIDEBAR DESKTOP SOBREPOSTA */}
+      <aside className="group fixed left-0 top-0 z-40 hidden h-screen w-20 flex-col border-r border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:w-64 md:flex">
+        <div className="mb-8 flex items-center gap-3 overflow-hidden">
+          <img
+            src="/icon-lembrei.png"
+            alt="Lembrei"
+            className="h-11 w-11 shrink-0 rounded-2xl bg-white shadow-sm"
+          />
+
+          <div className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <h1 className="text-2xl font-bold text-[#070D2D]">Lembrei</h1>
+            <p className="text-sm text-slate-500">Cobrança automática</p>
+          </div>
+        </div>
+
+        <nav className="space-y-2">
+          {navItems.map((item) => {
+            const Icon = item.icon
+
+            return (
+              <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+                <Icon size={19} className="shrink-0" />
+                <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                  {item.label}
+                </span>
+              </NavLink>
+            )
+          })}
+        </nav>
+
+        <div className="mt-auto space-y-3 pt-8">
+          <div className="overflow-visible">
+  <div className="flex items-center gap-3 rounded-2xl px-1 py-2 transition group-hover:bg-[#5B4BFF]/10">
+    <div className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm">
+      {userInitial}
+    </div>
+
+    <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <p className="text-xs text-slate-500">Usuário atual</p>
+      <p className="truncate text-sm font-semibold text-[#070D2D]">
+        {userName}
+      </p>
+    </div>
+  </div>
+</div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            <LogOut size={18} className="shrink-0" />
+
+            <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              Sair
+            </span>
+          </button>
+        </div>
+      </aside>
+
+      <main className="min-h-screen p-4 pt-20 md:p-8 md:pl-28">
+        <Outlet />
+      </main>
     </div>
   )
 }

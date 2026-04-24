@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Search, Trash2, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  MessageCircle,
+  Pencil,
+  Search,
+  Trash2,
+  Wallet,
+  X,
+} from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { getClients } from '../services/clientsService'
 import {
@@ -37,6 +48,12 @@ function getStatusLabel(status) {
   return 'Pendente'
 }
 
+function getStatusStyle(status) {
+  if (status === 'pago') return 'bg-emerald-100 text-emerald-700'
+  if (status === 'atrasado') return 'bg-red-100 text-red-700'
+  return 'bg-amber-100 text-amber-700'
+}
+
 function getMessageTypeLabel(type) {
   if (type === 'professional') return 'Profissional'
   if (type === 'urgent') return 'Urgente'
@@ -48,6 +65,23 @@ function isOverdue(charge) {
   const today = new Date()
   const due = new Date(charge.due_date + 'T00:00:00')
   return due < new Date(today.getFullYear(), today.getMonth(), today.getDate())
+}
+
+function StatBox({ title, value, icon: Icon, className }) {
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-slate-500">{title}</p>
+          <p className="mt-2 text-3xl font-bold text-[#070D2D]">{value}</p>
+        </div>
+
+        <div className={`rounded-2xl p-3 ${className}`}>
+          <Icon size={22} />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function Charges() {
@@ -113,6 +147,17 @@ export default function Charges() {
     })
   }, [enrichedCharges, statusFilter, search])
 
+  const pending = enrichedCharges.filter((item) => item.computedStatus === 'pendente')
+  const overdue = enrichedCharges.filter((item) => item.computedStatus === 'atrasado')
+  const paid = enrichedCharges.filter((item) => item.computedStatus === 'pago')
+
+  const totalOpen = [...pending, ...overdue].reduce(
+    (acc, item) => acc + Number(item.amount),
+    0,
+  )
+
+  const totalPaid = paid.reduce((acc, item) => acc + Number(item.amount), 0)
+
   function resetMessages() {
     setError('')
     setSuccess('')
@@ -174,6 +219,7 @@ export default function Charges() {
         setCharges((current) =>
           current.map((charge) => (charge.id === editingId ? updated : charge)),
         )
+
         setSuccess('Cobrança atualizada com sucesso.')
       } else {
         const newCharge = await createCharge({
@@ -202,6 +248,7 @@ export default function Charges() {
   function handleEdit(charge) {
     resetMessages()
     setEditingId(charge.id)
+
     setForm({
       client_id: charge.client?.id ?? charge.client_id ?? '',
       description: charge.description ?? '',
@@ -233,11 +280,13 @@ export default function Charges() {
 
     try {
       await markChargeAsPaid(id, user.id)
+
       setCharges((current) =>
         current.map((charge) =>
           charge.id === id ? { ...charge, status: 'pago' } : charge,
         ),
       )
+
       setSuccess('Cobrança marcada como paga.')
     } catch (err) {
       setError(err.message || 'Erro ao atualizar cobrança')
@@ -260,68 +309,127 @@ export default function Charges() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Cobranças</h1>
-        <p className="page-subtitle">
-          Crie cobranças, programe lembretes e envie mensagens profissionais.
+      <div className="rounded-3xl bg-gradient-to-r from-[#070D2D] via-[#161B4D] to-[#5B4BFF] p-6 text-white shadow-sm">
+        <p className="text-sm font-semibold text-[#AFA8FF]">
+          Gestão de recebimentos
+        </p>
+        <h1 className="mt-2 text-3xl font-bold">Cobranças</h1>
+        <p className="mt-2 max-w-2xl text-sm text-slate-200">
+          Crie cobranças, programe lembretes automáticos e envie mensagens
+          profissionais pelo WhatsApp.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="card grid gap-4 md:grid-cols-2">
-        <select
-          value={form.client_id}
-          onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-          className="input"
-        >
-          <option value="">Selecione um cliente</option>
-          {clients.map((client) => (
-            <option key={client.id} value={client.id}>
-              {client.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={form.message_type}
-          onChange={(e) => setForm({ ...form, message_type: e.target.value })}
-          className="input"
-        >
-          <option value="friendly">Tom amigável</option>
-          <option value="professional">Tom profissional</option>
-          <option value="urgent">Tom urgente</option>
-        </select>
-
-        <input
-          type="text"
-          placeholder="Descrição"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          className="input"
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatBox
+          title="Em aberto"
+          value={pending.length}
+          icon={Clock3}
+          className="bg-amber-100 text-amber-700"
         />
 
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Valor"
-          value={form.amount}
-          onChange={(e) => setForm({ ...form, amount: e.target.value })}
-          className="input"
+        <StatBox
+          title="Atrasadas"
+          value={overdue.length}
+          icon={AlertTriangle}
+          className="bg-red-100 text-red-700"
         />
 
-        <input
-          type="date"
-          value={form.due_date}
-          onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-          className="input md:col-span-2"
+        <StatBox
+          title="Pagas"
+          value={paid.length}
+          icon={CheckCircle2}
+          className="bg-emerald-100 text-emerald-700"
         />
 
-        <div className="rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4 md:col-span-2">
-          <h3 className="text-lg font-semibold text-[#070D2D]">
-            Automação de cobrança
-          </h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Escolha quando o sistema deve programar as mensagens.
-          </p>
+        <StatBox
+          title="Total em aberto"
+          value={formatCurrency(totalOpen)}
+          icon={Wallet}
+          className="bg-[#5B4BFF]/10 text-[#5B4BFF]"
+        />
+      </div>
+
+      <form onSubmit={handleSubmit} className="card">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-[#070D2D]">
+              {editingId ? 'Editar cobrança' : 'Nova cobrança'}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Informe o cliente, valor, vencimento e regras de lembrete.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF]">
+            <Wallet size={22} />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <select
+            value={form.client_id}
+            onChange={(e) => setForm({ ...form, client_id: e.target.value })}
+            className="input"
+          >
+            <option value="">Selecione um cliente</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={form.message_type}
+            onChange={(e) => setForm({ ...form, message_type: e.target.value })}
+            className="input"
+          >
+            <option value="friendly">Tom amigável</option>
+            <option value="professional">Tom profissional</option>
+            <option value="urgent">Tom urgente</option>
+          </select>
+
+          <input
+            type="text"
+            placeholder="Descrição"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            className="input"
+          />
+
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Valor"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            className="input"
+          />
+
+          <input
+            type="date"
+            value={form.due_date}
+            onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+            className="input md:col-span-2"
+          />
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF]">
+              <CalendarClock size={22} />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-[#070D2D]">
+                Automação de cobrança
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Escolha quando o sistema deve programar as mensagens.
+              </p>
+            </div>
+          </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {[
@@ -332,7 +440,7 @@ export default function Charges() {
             ].map(([key, label]) => (
               <label
                 key={key}
-                className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700"
+                className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700 transition hover:border-[#5B4BFF]/40 hover:bg-white"
               >
                 <input
                   type="checkbox"
@@ -357,6 +465,7 @@ export default function Charges() {
             <label className="block text-sm font-medium text-slate-700">
               Dias após o vencimento
             </label>
+
             <input
               type="number"
               min="0"
@@ -377,15 +486,19 @@ export default function Charges() {
         </div>
 
         {error ? (
-          <p className="text-sm text-red-600 md:col-span-2">{error}</p>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error}
+          </div>
         ) : null}
 
         {success ? (
-          <p className="text-sm text-[#5B4BFF] md:col-span-2">{success}</p>
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            {success}
+          </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button type="submit" disabled={saving} className="inline-flex items-center justify-center rounded-2xl bg-[#5B4BFF] px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-[#4A3BE8] disabled:opacity-60">
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button type="submit" disabled={saving} className="btn-primary">
             {saving
               ? 'Salvando...'
               : editingId
@@ -406,94 +519,137 @@ export default function Charges() {
         </div>
       </form>
 
-      <div className="card grid gap-4 lg:grid-cols-[220px_1fr]">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input"
-        >
-          <option value="todos">Todos os status</option>
-          <option value="pendente">Pendentes</option>
-          <option value="atrasado">Atrasadas</option>
-          <option value="pago">Pagas</option>
-        </select>
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por cliente, descrição ou data"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-11"
-          />
-        </div>
-      </div>
-
       <div className="card">
-        {loading ? (
-          <p>Carregando cobranças...</p>
-        ) : filteredCharges.length === 0 ? (
-          <p className="text-slate-500">Nenhuma cobrança encontrada.</p>
-        ) : (
-          <div className="space-y-3">
-            {filteredCharges.map((charge) => (
-              <div
-                key={charge.id}
-                className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <p className="font-semibold text-[#070D2D]">{charge.client?.name}</p>
-                  <p className="text-sm text-slate-600">{charge.description}</p>
-                  <p className="text-sm text-slate-500">
-                    {formatDate(charge.due_date)} • {formatCurrency(charge.amount)}
-                  </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-[#070D2D]">
+              Lista de cobranças
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Filtre por status ou busque por cliente, descrição e data.
+            </p>
+          </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <span className="badge">{getStatusLabel(charge.computedStatus)}</span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                      {getMessageTypeLabel(charge.message_type || 'friendly')}
-                    </span>
+          <div className="grid w-full gap-3 lg:max-w-2xl lg:grid-cols-[220px_1fr]">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="input"
+            >
+              <option value="todos">Todos os status</option>
+              <option value="pendente">Pendentes</option>
+              <option value="atrasado">Atrasadas</option>
+              <option value="pago">Pagas</option>
+            </select>
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por cliente, descrição ou data"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input pl-11"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          {loading ? (
+            <p>Carregando cobranças...</p>
+          ) : filteredCharges.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+              <Wallet className="mx-auto text-[#5B4BFF]" size={34} />
+              <p className="mt-3 font-semibold text-[#070D2D]">
+                Nenhuma cobrança encontrada
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Crie uma nova cobrança para começar a acompanhar seus recebimentos.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredCharges.map((charge) => (
+                <div
+                  key={charge.id}
+                  className="rounded-2xl border border-slate-200 p-4 transition hover:border-[#5B4BFF]/40 hover:bg-[#5B4BFF]/5"
+                >
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-[#070D2D]">
+                          {charge.client?.name || 'Cliente não informado'}
+                        </p>
+
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
+                            charge.computedStatus,
+                          )}`}
+                        >
+                          {getStatusLabel(charge.computedStatus)}
+                        </span>
+
+                        <span className="rounded-full bg-[#5B4BFF]/10 px-3 py-1 text-xs font-semibold text-[#5B4BFF]">
+                          {getMessageTypeLabel(charge.message_type || 'friendly')}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-sm text-slate-600">
+                        {charge.description}
+                      </p>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        Vence em {formatDate(charge.due_date)} •{' '}
+                        <strong className="text-[#070D2D]">
+                          {formatCurrency(charge.amount)}
+                        </strong>
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSend(charge)}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4A3BE8]"
+                      >
+                        <MessageCircle size={16} />
+                        WhatsApp
+                      </button>
+
+                      {charge.computedStatus !== 'pago' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkAsPaid(charge.id)}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                        >
+                          <CheckCircle2 size={16} />
+                          Pago
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(charge)}
+                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#5B4BFF] transition hover:bg-[#5B4BFF]/10"
+                      >
+                        <Pencil size={16} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(charge.id)}
+                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSend(charge)}
-                    className="rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4A3BE8]"
-                  >
-                    Enviar WhatsApp
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleMarkAsPaid(charge.id)}
-                    className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                  >
-                    Marcar como pago
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(charge)}
-                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#5B4BFF] hover:bg-[#5B4BFF]/10"
-                  >
-                    <Pencil size={16} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(charge.id)}
-                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
