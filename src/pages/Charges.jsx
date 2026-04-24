@@ -9,6 +9,10 @@ import {
   markChargeAsPaid,
   updateCharge,
 } from '../services/chargesService'
+import {
+  buildDefaultRules,
+  replaceAutomationForCharge,
+} from '../services/automationService'
 import { formatCurrency, formatDate } from '../utils/format'
 import { buildMessage, openWhatsApp } from '../utils/whatsapp'
 
@@ -18,6 +22,13 @@ const initialForm = {
   amount: '',
   due_date: '',
   message_type: 'friendly',
+  automation: {
+    oneMonthBefore: false,
+    fifteenDaysBefore: false,
+    fiveDaysBefore: false,
+    onDueDate: true,
+    afterDueDays: '',
+  },
 }
 
 function getStatusLabel(status) {
@@ -51,7 +62,6 @@ export default function Charges() {
   const [editingId, setEditingId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('todos')
   const [search, setSearch] = useState('')
-
   const [form, setForm] = useState(initialForm)
 
   useEffect(() => {
@@ -122,6 +132,16 @@ export default function Charges() {
     return ''
   }
 
+  async function syncAutomation(charge) {
+    const rules = buildDefaultRules(form.automation)
+
+    await replaceAutomationForCharge({
+      user_id: user.id,
+      charge,
+      rules,
+    })
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     resetMessages()
@@ -149,6 +169,8 @@ export default function Charges() {
           message_type: form.message_type,
         })
 
+        await syncAutomation(updated)
+
         setCharges((current) =>
           current.map((charge) => (charge.id === editingId ? updated : charge)),
         )
@@ -162,6 +184,8 @@ export default function Charges() {
           due_date: form.due_date,
           message_type: form.message_type,
         })
+
+        await syncAutomation(newCharge)
 
         setCharges((current) => [newCharge, ...current])
         setSuccess('Cobrança criada com sucesso.')
@@ -179,11 +203,12 @@ export default function Charges() {
     resetMessages()
     setEditingId(charge.id)
     setForm({
-      client_id: charge.client?.id ?? '',
+      client_id: charge.client?.id ?? charge.client_id ?? '',
       description: charge.description ?? '',
       amount: String(charge.amount ?? ''),
       due_date: charge.due_date ?? '',
       message_type: charge.message_type ?? 'friendly',
+      automation: initialForm.automation,
     })
   }
 
@@ -236,20 +261,17 @@ export default function Charges() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Cobranças</h1>
-        <p className="mt-2 text-slate-500">
-          Cadastre, filtre e acompanhe suas cobranças.
+        <h1 className="page-title">Cobranças</h1>
+        <p className="page-subtitle">
+          Crie cobranças, programe lembretes e envie mensagens profissionais.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:grid-cols-2"
-      >
+      <form onSubmit={handleSubmit} className="card grid gap-4 md:grid-cols-2">
         <select
           value={form.client_id}
           onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         >
           <option value="">Selecione um cliente</option>
           {clients.map((client) => (
@@ -262,7 +284,7 @@ export default function Charges() {
         <select
           value={form.message_type}
           onChange={(e) => setForm({ ...form, message_type: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         >
           <option value="friendly">Tom amigável</option>
           <option value="professional">Tom profissional</option>
@@ -274,7 +296,7 @@ export default function Charges() {
           placeholder="Descrição"
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         />
 
         <input
@@ -283,30 +305,87 @@ export default function Charges() {
           placeholder="Valor"
           value={form.amount}
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         />
 
         <input
           type="date"
           value={form.due_date}
           onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 md:col-span-2"
+          className="input md:col-span-2"
         />
+
+        <div className="rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4 md:col-span-2">
+          <h3 className="text-lg font-semibold text-[#070D2D]">
+            Automação de cobrança
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Escolha quando o sistema deve programar as mensagens.
+          </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {[
+              ['oneMonthBefore', '30 dias antes'],
+              ['fifteenDaysBefore', '15 dias antes'],
+              ['fiveDaysBefore', '5 dias antes'],
+              ['onDueDate', 'No dia do vencimento'],
+            ].map(([key, label]) => (
+              <label
+                key={key}
+                className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={form.automation[key]}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      automation: {
+                        ...form.automation,
+                        [key]: e.target.checked,
+                      },
+                    })
+                  }
+                  className="h-4 w-4 accent-[#5B4BFF]"
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-slate-700">
+              Dias após o vencimento
+            </label>
+            <input
+              type="number"
+              min="0"
+              placeholder="Ex: 3"
+              value={form.automation.afterDueDays}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  automation: {
+                    ...form.automation,
+                    afterDueDays: e.target.value,
+                  },
+                })
+              }
+              className="input mt-2"
+            />
+          </div>
+        </div>
 
         {error ? (
           <p className="text-sm text-red-600 md:col-span-2">{error}</p>
         ) : null}
 
         {success ? (
-          <p className="text-sm text-emerald-600 md:col-span-2">{success}</p>
+          <p className="text-sm text-[#5B4BFF] md:col-span-2">{success}</p>
         ) : null}
 
         <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-2xl bg-slate-900 px-4 py-3 font-medium text-white hover:opacity-90 disabled:opacity-60"
-          >
+          <button type="submit" disabled={saving} className="inline-flex items-center justify-center rounded-2xl bg-[#5B4BFF] px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-[#4A3BE8] disabled:opacity-60">
             {saving
               ? 'Salvando...'
               : editingId
@@ -318,7 +397,7 @@ export default function Charges() {
             <button
               type="button"
               onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-700 hover:bg-slate-100"
+              className="btn-secondary inline-flex items-center gap-2"
             >
               <X size={16} />
               Cancelar edição
@@ -327,11 +406,11 @@ export default function Charges() {
         </div>
       </form>
 
-      <div className="grid gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 lg:grid-cols-[220px_1fr]">
+      <div className="card grid gap-4 lg:grid-cols-[220px_1fr]">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         >
           <option value="todos">Todos os status</option>
           <option value="pendente">Pendentes</option>
@@ -346,12 +425,12 @@ export default function Charges() {
             placeholder="Buscar por cliente, descrição ou data"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200 py-3 pl-11 pr-4 outline-none focus:border-slate-400"
+            className="input pl-11"
           />
         </div>
       </div>
 
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="card">
         {loading ? (
           <p>Carregando cobranças...</p>
         ) : filteredCharges.length === 0 ? (
@@ -364,16 +443,15 @@ export default function Charges() {
                 className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
               >
                 <div>
-                  <p className="font-semibold">{charge.client?.name}</p>
+                  <p className="font-semibold text-[#070D2D]">{charge.client?.name}</p>
                   <p className="text-sm text-slate-600">{charge.description}</p>
                   <p className="text-sm text-slate-500">
                     {formatDate(charge.due_date)} • {formatCurrency(charge.amount)}
                   </p>
+
                   <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="badge">{getStatusLabel(charge.computedStatus)}</span>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                      {getStatusLabel(charge.computedStatus)}
-                    </span>
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">
                       {getMessageTypeLabel(charge.message_type || 'friendly')}
                     </span>
                   </div>
@@ -383,7 +461,7 @@ export default function Charges() {
                   <button
                     type="button"
                     onClick={() => handleSend(charge)}
-                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                    className="rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4A3BE8]"
                   >
                     Enviar WhatsApp
                   </button>
@@ -399,7 +477,7 @@ export default function Charges() {
                   <button
                     type="button"
                     onClick={() => handleEdit(charge)}
-                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#5B4BFF] hover:bg-[#5B4BFF]/10"
                   >
                     <Pencil size={16} />
                   </button>

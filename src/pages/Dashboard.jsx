@@ -71,9 +71,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="mt-2 text-slate-500">
-          Visão geral financeira das suas cobranças.
+        <h1 className="page-title">Dashboard</h1>
+        <p className="page-subtitle">
+          Visão geral das cobranças e lembretes automáticos.
         </p>
       </div>
 
@@ -82,30 +82,28 @@ export default function Dashboard() {
         <StatCard title="Atrasadas" value={overdue.length} icon={AlertTriangle} />
         <StatCard title="Pagas" value={paid.length} icon={CheckCircle2} />
         <StatCard title="Vencem hoje" value={dueToday.length} icon={Clock3} />
-        <StatCard
-          title="Total em aberto"
-          value={formatCurrency(totalOpen)}
-          icon={Wallet}
-        />
+        <StatCard title="Total em aberto" value={formatCurrency(totalOpen)} icon={Wallet} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 className="text-xl font-semibold">Resumo financeiro</h2>
+        <div className="card">
+          <h2 className="text-xl font-semibold text-[#070D2D]">Resumo financeiro</h2>
+
           <div className="mt-4 space-y-3 text-sm">
             <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-4">
               <span className="text-slate-600">Total recebido</span>
-              <strong>{formatCurrency(totalPaid)}</strong>
+              <strong className="text-[#070D2D]">{formatCurrency(totalPaid)}</strong>
             </div>
+
             <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-4">
               <span className="text-slate-600">Total pendente</span>
-              <strong>{formatCurrency(totalOpen)}</strong>
+              <strong className="text-[#070D2D]">{formatCurrency(totalOpen)}</strong>
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 className="text-xl font-semibold">Próximas cobranças</h2>
+        <div className="card">
+          <h2 className="text-xl font-semibold text-[#070D2D]">Próximas cobranças</h2>
 
           <div className="mt-4 space-y-3">
             {loading ? (
@@ -119,9 +117,10 @@ export default function Dashboard() {
                   className="flex flex-col gap-2 rounded-2xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
                 >
                   <div>
-                    <p className="font-semibold">{charge.client?.name}</p>
+                    <p className="font-semibold text-[#070D2D]">{charge.client?.name}</p>
                     <p className="text-sm text-slate-600">{charge.description}</p>
                   </div>
+
                   <div className="text-sm text-slate-500">
                     {charge.due_date} • {formatCurrency(charge.amount)}
                   </div>

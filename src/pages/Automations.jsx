@@ -41,15 +41,15 @@ export default function Automations() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Automações</h1>
-        <p className="mt-2 text-slate-500">
-          Veja todas as mensagens programadas para envio.
+        <h1 className="page-title">Automações</h1>
+        <p className="page-subtitle">
+          Veja os lembretes programados para cada cobrança.
         </p>
       </div>
 
       {error ? <p className="text-red-600">{error}</p> : null}
 
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="card">
         {loading ? (
           <p>Carregando automações...</p>
         ) : items.length === 0 ? (
@@ -57,16 +57,11 @@ export default function Automations() {
         ) : (
           <div className="space-y-3">
             {items.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-slate-200 p-4"
-              >
+              <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="font-semibold">{item.client?.name}</p>
-                    <p className="text-sm text-slate-600">
-                      {item.charge?.description}
-                    </p>
+                    <p className="font-semibold text-[#070D2D]">{item.client?.name}</p>
+                    <p className="text-sm text-slate-600">{item.charge?.description}</p>
                     <p className="text-sm text-slate-500">
                       {formatPhone(item.client?.phone || '')}
                     </p>
@@ -84,10 +79,8 @@ export default function Automations() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="badge">{getStatusLabel(item.status)}</span>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                    {getStatusLabel(item.status)}
-                  </span>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700">
                     {getMessageLabel(item.message_type)}
                   </span>
                 </div>

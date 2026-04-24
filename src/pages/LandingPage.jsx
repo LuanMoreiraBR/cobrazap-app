@@ -124,7 +124,7 @@ export default function LandingPage() {
                       Mensagem profissional
                     </h2>
                   </div>
-                  <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium text-[#7C6CFF]">
+                  <span className="rounded-full bg-[#5B4BFF]-400/15 px-3 py-1 text-xs font-medium text-[#7C6CFF]">
                     WhatsApp
                   </span>
                 </div>
@@ -229,7 +229,7 @@ export default function LandingPage() {
               key={step.number}
               className="rounded-3xl border border-white/10 bg-white/5 p-6"
             >
-              <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-semibold text-[#7C6CFF]">
+              <span className="inline-flex rounded-full bg-[#5B4BFF] px-3 py-1 text-sm font-semibold text-[#7C6CFF]">
                 {step.number}
               </span>
               <h3 className="mt-4 text-xl font-semibold text-white">{step.title}</h3>
@@ -255,7 +255,7 @@ export default function LandingPage() {
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
               href="/cadastro"
-              className="inline-flex items-center justify-center rounded-2xl bg-emerald-400 px-6 py-4 text-base font-semibold text-slate-950 transition hover:opacity-90"
+              className="inline-flex items-center justify-center rounded-2xl bg-[#5B4BFF] px-6 py-4 text-base font-semibold text-slate-950 transition hover:opacity-90"
             >
               Criar minha conta
             </a>

@@ -146,22 +146,19 @@ export default function Clients() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Clientes</h1>
-        <p className="mt-2 text-slate-500">
-          Cadastre, edite e organize seus clientes.
+        <h1 className="page-title">Clientes</h1>
+        <p className="page-subtitle">
+          Cadastre e acompanhe seus clientes em um só lugar.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="grid gap-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 md:grid-cols-2"
-      >
+      <form onSubmit={handleSubmit} className="card grid gap-4 md:grid-cols-2">
         <input
           type="text"
           placeholder="Nome do cliente"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         />
 
         <input
@@ -171,14 +168,14 @@ export default function Clients() {
           onChange={(e) =>
             setForm({ ...form, phone: formatPhone(e.target.value) })
           }
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+          className="input"
         />
 
         <textarea
           placeholder="Observações"
           value={form.notes}
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          className="rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400 md:col-span-2"
+          className="input md:col-span-2"
           rows={4}
         />
 
@@ -187,15 +184,11 @@ export default function Clients() {
         ) : null}
 
         {success ? (
-          <p className="text-sm text-[#7C6CFF] md:col-span-2">{success}</p>
+          <p className="text-sm text-[#5B4BFF] md:col-span-2">{success}</p>
         ) : null}
 
         <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-2xl bg-slate-900 px-4 py-3 font-medium text-white hover:opacity-90 disabled:opacity-60"
-          >
+          <button type="submit" disabled={saving} className="btn-primary">
             {saving
               ? 'Salvando...'
               : editingId
@@ -207,7 +200,7 @@ export default function Clients() {
             <button
               type="button"
               onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-700 hover:bg-slate-100"
+              className="btn-secondary inline-flex items-center gap-2"
             >
               <X size={16} />
               Cancelar edição
@@ -216,7 +209,7 @@ export default function Clients() {
         </div>
       </form>
 
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="card">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -224,7 +217,7 @@ export default function Clients() {
             placeholder="Buscar por nome, telefone ou observação"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200 py-3 pl-11 pr-4 outline-none focus:border-slate-400"
+            className="input pl-11"
           />
         </div>
       </div>
@@ -233,18 +226,17 @@ export default function Clients() {
         {loading ? (
           <p>Carregando clientes...</p>
         ) : filteredClients.length === 0 ? (
-          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="card">
             <p className="text-slate-500">Nenhum cliente encontrado.</p>
           </div>
         ) : (
           filteredClients.map((client) => (
-            <div
-              key={client.id}
-              className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
-            >
+            <div key={client.id} className="card">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold">{client.name}</h2>
+                  <h2 className="text-xl font-semibold text-[#070D2D]">
+                    {client.name}
+                  </h2>
                   <p className="mt-2 text-sm text-slate-600">
                     {formatPhone(client.phone)}
                   </p>
@@ -254,7 +246,7 @@ export default function Clients() {
                   <button
                     type="button"
                     onClick={() => handleEdit(client)}
-                    className="rounded-xl border border-slate-200 p-2 text-slate-700 hover:bg-slate-100"
+                    className="rounded-xl border border-slate-200 p-2 text-[#5B4BFF] hover:bg-[#5B4BFF]/10"
                   >
                     <Pencil size={16} />
                   </button>
