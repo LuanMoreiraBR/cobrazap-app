@@ -12,8 +12,8 @@ import { useAuth } from '../../contexts/AuthContext'
 const navClass = ({ isActive }) =>
   `flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
     isActive
-      ? 'bg-slate-900 text-white'
-      : 'text-slate-700 hover:bg-slate-100'
+      ? 'bg-[#5B4BFF] text-white shadow-sm'
+      : 'text-slate-700 hover:bg-[#5B4BFF]/10 hover:text-[#5B4BFF]'
   }`
 
 export default function AppLayout() {
@@ -30,10 +30,20 @@ export default function AppLayout() {
       <div className="grid min-h-screen md:grid-cols-[260px_1fr]">
         <aside className="border-r border-slate-200 bg-white p-5">
           <Link to="/app" className="mb-8 block">
-            <h1 className="text-2xl font-bold">CobraZap</h1>
-            <p className="text-sm text-slate-500">
-              Cobrança simples por WhatsApp
-            </p>
+            <h1 className="text-2xl font-bold">Lembrei</h1>
+            <div className="flex items-center gap-3">
+  <img
+    src="/icon-lembrei.png"
+    alt="Lembrei"
+    className="h-10 w-10 rounded-xl"
+  />
+  <div>
+    <h1 className="text-2xl font-bold text-[#070D2D]">Lembrei</h1>
+    <p className="text-sm text-slate-500">
+      Cobrança automática
+    </p>
+  </div>
+</div>
           </Link>
 
           <nav className="space-y-2">

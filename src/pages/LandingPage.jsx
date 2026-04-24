@@ -48,28 +48,39 @@ export default function LandingPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <section className="border-b border-white/10 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950">
-        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-24">
-          <div className="flex flex-col justify-center">
-            <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-300">
-              CobraZap • Cobrança simples por WhatsApp
-            </div>
+        <div className="min-h-screen bg-slate-950 text-white">
+  <section className="border-b border-white/10 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950">
+    <div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-24">
+      
+      <div className="flex flex-col justify-center">
+        
+        {/* 🔥 LOGO NOVO */}
+        <div className="mb-8 flex items-center gap-3">
+          <img
+            src="/icon-lembrei.png"
+            alt="Lembrei"
+            className="h-12 w-12 rounded-2xl shadow-lg"
+          />
+          <span className="text-3xl font-bold text-white">Lembrei</span>
+        </div>
 
-            <h1 className="max-w-3xl text-4xl font-bold leading-tight text-white md:text-6xl">
-              Cobre clientes no momento certo, com a mensagem certa.
-            </h1>
+        {/* BADGE */}
+        <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-[#5B4BFF]/30 bg-[#5B4BFF]/10 px-4 py-2 text-sm font-medium text-[#7C6CFF]">
+          Lembrei • Cobrança automática
+        </div>
 
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-              O CobraZap ajuda autônomos e pequenos negócios a organizar cobranças,
-              acompanhar pagamentos e enviar mensagens profissionais pelo WhatsApp sem
-              constrangimento.
-            </p>
+        <h1 className="max-w-3xl text-4xl font-bold leading-tight text-white md:text-6xl">
+          Cobre automaticamente. Cliente lembrado. Você pago.
+        </h1>
+
+        <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+          O Lembrei ajuda autônomos e pequenos negócios a organizar cobranças, programar lembretes e enviar mensagens profissionais para clientes no momento certo.
+        </p>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <a
                 href="/cadastro"
-                className="inline-flex items-center justify-center rounded-2xl bg-emerald-400 px-6 py-4 text-base font-semibold text-slate-950 transition hover:opacity-90"
+                className="inline-flex items-center justify-center rounded-2xl bg-[#5B4BFF] px-6 py-4 text-base font-semibold text-white transition hover:bg-[#4A3BE8]"
               >
                 Testar agora
               </a>
@@ -113,7 +124,7 @@ export default function LandingPage() {
                       Mensagem profissional
                     </h2>
                   </div>
-                  <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium text-emerald-300">
+                  <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium text-[#7C6CFF]">
                     WhatsApp
                   </span>
                 </div>
@@ -157,7 +168,7 @@ export default function LandingPage() {
 
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
         <div className="max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7C6CFF]">
             Para quem é
           </p>
           <h2 className="mt-4 text-3xl font-bold text-white md:text-4xl">
@@ -180,7 +191,7 @@ export default function LandingPage() {
       <section className="border-y border-white/10 bg-white/5">
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
           <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7C6CFF]">
               Benefícios principais
             </p>
             <h2 className="mt-4 text-3xl font-bold text-white md:text-4xl">
@@ -204,7 +215,7 @@ export default function LandingPage() {
 
       <section id="como-funciona" className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
         <div className="max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7C6CFF]">
             Como funciona
           </p>
           <h2 className="mt-4 text-3xl font-bold text-white md:text-4xl">
@@ -218,7 +229,7 @@ export default function LandingPage() {
               key={step.number}
               className="rounded-3xl border border-white/10 bg-white/5 p-6"
             >
-              <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-semibold text-emerald-300">
+              <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-semibold text-[#7C6CFF]">
                 {step.number}
               </span>
               <h3 className="mt-4 text-xl font-semibold text-white">{step.title}</h3>
@@ -230,14 +241,14 @@ export default function LandingPage() {
 
       <section className="border-t border-white/10 bg-gradient-to-b from-slate-950 to-slate-900">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center lg:px-10">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-300">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7C6CFF]">
             Teste agora
           </p>
           <h2 className="mt-4 text-3xl font-bold text-white md:text-5xl">
             Organize suas cobranças e cobre com mais profissionalismo.
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-            Comece com o CobraZap e tenha uma forma mais prática de acompanhar
+            Comece com o Lembrei e tenha uma forma mais prática de acompanhar
             clientes, pagamentos e mensagens no WhatsApp.
           </p>
 
