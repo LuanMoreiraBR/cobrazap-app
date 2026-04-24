@@ -21,6 +21,7 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const [profileName, setProfileName] = useState('')
+  const [openMenu, setOpenMenu] = useState(false)
 
   useEffect(() => {
     async function loadProfile() {
@@ -44,6 +45,8 @@ export default function AppLayout() {
     user?.user_metadata?.full_name?.trim() ||
     user?.email ||
     'Usuário'
+
+  const userInitial = userName?.charAt(0)?.toUpperCase() || 'U'
 
   async function handleLogout() {
     await signOut()
@@ -89,7 +92,7 @@ export default function AppLayout() {
             </NavLink>
           </nav>
 
-          <div className="mt-auto space-y-3 pt-8">
+          <div className="mt-auto hidden space-y-3 pt-8 md:block">
             <div className="rounded-2xl bg-[#5B4BFF]/10 p-4">
               <p className="text-xs text-slate-500">Usuário atual</p>
               <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
@@ -98,6 +101,7 @@ export default function AppLayout() {
             </div>
 
             <button
+              type="button"
               onClick={handleLogout}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
@@ -107,8 +111,38 @@ export default function AppLayout() {
           </div>
         </aside>
 
-        <main className="p-6 md:p-8">
-          <Outlet />
+        <main className="relative p-4 md:p-8">
+            <div className="fixed right-4 top-4 z-50 md:hidden">
+            <button
+              type="button"
+              onClick={() => setOpenMenu((current) => !current)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm"
+            >
+              {userInitial}
+            </button>
+
+            {openMenu ? (
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
+                <p className="text-xs text-slate-500">Usuário atual</p>
+                <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
+                  {userName}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+                >
+                  <LogOut size={15} />
+                  Sair
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+         <div className="pt-12 md:pt-0">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
