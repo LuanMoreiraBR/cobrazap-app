@@ -1,13 +1,19 @@
 import { supabase } from './supabaseClient'
+import { calculateScheduledFor } from '../utils/scheduleDate'
 
-function toMiddayIso(dateString) {
-  return `${dateString}T12:00:00`
-}
+function buildPixBlock({ pixQrCode, paymentUrl }) {
+  if (!pixQrCode) return ''
 
-function addDays(dateString, days) {
-  const date = new Date(`${dateString}T12:00:00`)
-  date.setDate(date.getDate() + days)
-  return date.toISOString()
+  return `
+
+Para pagar via Pix, use o código copia e cola abaixo:
+
+${pixQrCode}
+
+${paymentUrl ? `Link de pagamento:
+${paymentUrl}` : ''}
+
+Após o pagamento, a baixa será identificada automaticamente.`
 }
 
 export function buildAutomationMessage({
@@ -16,6 +22,8 @@ export function buildAutomationMessage({
   amount,
   dueDate,
   messageType,
+  pixQrCode,
+  paymentUrl,
 }) {
   const value = new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -23,16 +31,17 @@ export function buildAutomationMessage({
   }).format(Number(amount || 0))
 
   const date = new Date(`${dueDate}T00:00:00`).toLocaleDateString('pt-BR')
+  const pixBlock = buildPixBlock({ pixQrCode, paymentUrl })
 
   if (messageType === 'urgent') {
-    return `Olá ${clientName}, tudo bem? Identificamos que o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}, ainda está pendente. Poderia verificar, por gentileza?`
+    return `Olá ${clientName}, tudo bem? Identificamos que o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}, ainda está pendente. Poderia verificar, por gentileza?${pixBlock}`
   }
 
   if (messageType === 'professional') {
-    return `Olá ${clientName}, tudo bem? Passando para lembrar sobre o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Ficamos à disposição.`
+    return `Olá ${clientName}, tudo bem? Passando para lembrar sobre o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Ficamos à disposição.${pixBlock}`
   }
 
-  return `Olá ${clientName}, tudo bem? Só passando para lembrar do pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Qualquer dúvida, fico à disposição.`
+  return `Olá ${clientName}, tudo bem? Só passando para lembrar do pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Qualquer dúvida, fico à disposição.${pixBlock}`
 }
 
 export function buildDefaultRules(selectedRules) {
@@ -88,14 +97,26 @@ export function buildDefaultRules(selectedRules) {
 
 export function buildScheduledDate(dueDate, rule) {
   if (rule.trigger_type === 'before_due') {
-    return addDays(dueDate, -rule.offset_days)
+    return calculateScheduledFor({
+      dueDate,
+      offsetDays: -Number(rule.offset_days || 0),
+      sendImmediatelyIfToday: false,
+    })
   }
 
   if (rule.trigger_type === 'after_due') {
-    return addDays(dueDate, rule.offset_days)
+    return calculateScheduledFor({
+      dueDate,
+      offsetDays: Number(rule.offset_days || 0),
+      sendImmediatelyIfToday: false,
+    })
   }
 
-  return toMiddayIso(dueDate)
+  return calculateScheduledFor({
+    dueDate,
+    offsetDays: 0,
+    sendImmediatelyIfToday: true,
+  })
 }
 
 async function getClientById(clientId, userId) {
@@ -110,11 +131,7 @@ async function getClientById(clientId, userId) {
   return data
 }
 
-export async function replaceAutomationForCharge({
-  user_id,
-  charge,
-  rules,
-}) {
+export async function replaceAutomationForCharge({ user_id, charge, rules }) {
   const clientId = charge.client_id || charge.client?.id
 
   if (!clientId) {
@@ -171,6 +188,8 @@ export async function replaceAutomationForCharge({
       amount: charge.amount,
       dueDate: charge.due_date,
       messageType: rule.message_type,
+      pixQrCode: charge.pix_qr_code,
+      paymentUrl: charge.payment_url,
     }),
     phone: client.phone,
     status: 'pending',
@@ -220,6 +239,7 @@ export async function cancelPendingMessagesForCharge(chargeId, userId) {
 
   if (error) throw error
 }
+
 export async function retryScheduledMessage(messageId, userId) {
   const { error } = await supabase
     .from('scheduled_messages')

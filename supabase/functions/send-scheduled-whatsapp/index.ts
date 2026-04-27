@@ -1,23 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-}
-
-function onlyDigits(value: string) {
-  return String(value || '').replace(/\D/g, '')
-}
-
 function getEnv(name: string) {
   const value = Deno.env.get(name)
   if (!value) throw new Error(`Variável de ambiente ausente: ${name}`)
   return value
 }
 
+function onlyDigits(value: string) {
+  return String(value || '').replace(/\D/g, '')
+}
+
 function formatBrazilWhatsApp(phone: string) {
   const digits = onlyDigits(phone)
+
+  if (!digits) {
+    throw new Error('Telefone vazio.')
+  }
 
   if (digits.startsWith('55')) {
     return `whatsapp:+${digits}`
@@ -59,95 +57,120 @@ async function sendWithTwilio({ to, text }: { to: string; text: string }) {
   return data
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+Deno.serve(async () => {
+  const supabase = createClient(
+    getEnv('SUPABASE_URL'),
+    getEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  )
 
-  try {
-    const supabase = createClient(
-      getEnv('SUPABASE_URL'),
-      getEnv('SUPABASE_SERVICE_ROLE_KEY'),
-    )
+  const { data: messages, error } = await supabase
+    .from('scheduled_messages')
+    .select(`
+      *,
+      charge:charges (
+        id,
+        status,
+        payment_status
+      )
+    `)
+    .eq('status', 'pending')
+    .lte('scheduled_for', new Date().toISOString())
+    .order('scheduled_for', { ascending: true })
+    .limit(20)
 
-    const { data: messages, error } = await supabase
-      .from('scheduled_messages')
-      .select('*')
-      .eq('status', 'pending')
-      .lte('scheduled_for', new Date().toISOString())
-      .limit(10)
-
-    if (error) throw error
-
-    const results = []
-
-    for (const message of messages || []) {
-      try {
-        if (!message.phone) throw new Error('Telefone não informado.')
-        if (!message.message_text) throw new Error('Mensagem não informada.')
-
-        const sent = await sendWithTwilio({
-          to: formatBrazilWhatsApp(message.phone),
-          text: message.message_text,
-        })
-
-        await supabase
-          .from('scheduled_messages')
-          .update({
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-            provider_message_id: sent.sid || null,
-            attempts: Number(message.attempts || 0) + 1,
-            last_attempt_at: new Date().toISOString(),
-            error_message: null,
-          })
-          .eq('id', message.id)
-
-        results.push({
-          id: message.id,
-          status: 'sent',
-          provider: 'twilio',
-          sid: sent.sid,
-        })
-      } catch (err) {
-        await supabase
-          .from('scheduled_messages')
-          .update({
-            status: 'failed',
-            attempts: Number(message.attempts || 0) + 1,
-            last_attempt_at: new Date().toISOString(),
-            error_message: err.message,
-          })
-          .eq('id', message.id)
-
-        results.push({
-          id: message.id,
-          status: 'failed',
-          error: err.message,
-        })
-      }
-    }
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        found: messages?.length || 0,
-        results,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    )
-  } catch (err) {
+  if (error) {
     return new Response(
       JSON.stringify({
         ok: false,
-        error: err.message,
+        error: error.message,
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
       },
     )
   }
+
+  const results = []
+
+  for (const message of messages || []) {
+    try {
+      if (message.charge?.status === 'pago') {
+        await supabase
+          .from('scheduled_messages')
+          .update({
+            status: 'cancelled',
+            error_message: 'Cobrança já paga.',
+            last_attempt_at: new Date().toISOString(),
+          })
+          .eq('id', message.id)
+
+        results.push({
+          id: message.id,
+          status: 'cancelled',
+          reason: 'Cobrança já paga.',
+        })
+
+        continue
+      }
+
+      const to = formatBrazilWhatsApp(message.phone)
+      const text = message.message_text
+
+      if (!text) {
+        throw new Error('Mensagem vazia.')
+      }
+
+      const twilioResult = await sendWithTwilio({
+        to,
+        text,
+      })
+
+      await supabase
+        .from('scheduled_messages')
+        .update({
+          status: 'sent',
+          provider_message_id: twilioResult.sid,
+          error_message: null,
+          sent_at: new Date().toISOString(),
+          last_attempt_at: new Date().toISOString(),
+          attempts: Number(message.attempts || 0) + 1,
+        })
+        .eq('id', message.id)
+
+      results.push({
+        id: message.id,
+        status: 'sent',
+        to,
+        provider_message_id: twilioResult.sid,
+      })
+    } catch (err) {
+      await supabase
+        .from('scheduled_messages')
+        .update({
+          status: 'failed',
+          error_message: err.message,
+          last_attempt_at: new Date().toISOString(),
+          attempts: Number(message.attempts || 0) + 1,
+        })
+        .eq('id', message.id)
+
+      results.push({
+        id: message.id,
+        status: 'failed',
+        error: err.message,
+      })
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      found: messages?.length || 0,
+      results,
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+    },
+  )
 })

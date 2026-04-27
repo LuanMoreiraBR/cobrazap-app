@@ -412,3 +412,47 @@ entrypoint = "./functions/send-scheduled-whatsapp/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-scheduled-whatsapp/*.html" ]
+
+[functions.create-pix-payment]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-pix-payment/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/create-pix-payment/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/create-pix-payment/*.html" ]
+
+[functions.mercado-pago-webhook]
+enabled = true
+verify_jwt = true
+import_map = "./functions/mercado-pago-webhook/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/mercado-pago-webhook/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/mercado-pago-webhook/*.html" ]
+
+[functions.mercado-pago-oauth-start]
+enabled = true
+verify_jwt = true
+import_map = "./functions/mercado-pago-oauth-start/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/mercado-pago-oauth-start/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/mercado-pago-oauth-start/*.html" ]
+
+[functions.mercado-pago-oauth-callback]
+enabled = true
+verify_jwt = true
+import_map = "./functions/mercado-pago-oauth-callback/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/mercado-pago-oauth-callback/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/mercado-pago-oauth-callback/*.html" ]

@@ -112,3 +112,16 @@ export async function deleteCharge(id, userId) {
 
   if (error) throw error
 }
+export async function createPixPaymentForCharge(chargeId, userId) {
+  const { data, error } = await supabase.functions.invoke('create-pix-payment', {
+    body: {
+      charge_id: chargeId,
+      user_id: userId,
+    },
+  })
+
+  if (error) throw error
+  if (!data?.ok) throw new Error(data?.error || 'Erro ao gerar Pix.')
+
+  return data.charge
+}

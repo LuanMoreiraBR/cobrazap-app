@@ -8,6 +8,7 @@ import Dashboard from '../pages/Dashboard'
 import Clients from '../pages/Clients'
 import Charges from '../pages/Charges'
 import Automations from '../pages/Automations'
+import Settings from '../pages/Settings'
 
 export const router = createBrowserRouter([
   {
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
       { path: 'clientes', element: <Clients /> },
       { path: 'cobrancas', element: <Charges /> },
       { path: 'automacoes', element: <Automations /> },
+      { path: 'configuracoes', element: <Settings /> },
     ],
   },
 ])
