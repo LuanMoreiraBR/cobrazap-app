@@ -9,6 +9,8 @@ import Clients from '../pages/Clients'
 import Charges from '../pages/Charges'
 import Automations from '../pages/Automations'
 import Settings from '../pages/Settings'
+import Privacidade from '../pages/Privacidade'
+import Termos from '../pages/Termos'
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +25,17 @@ export const router = createBrowserRouter([
     path: '/cadastro',
     element: <Register />,
   },
+
+  // 👇 ADICIONE AQUI
+  {
+    path: '/privacidade',
+    element: <Privacidade />,
+  },
+  {
+    path: '/termos',
+    element: <Termos />,
+  },
+
   {
     path: '/app',
     element: (

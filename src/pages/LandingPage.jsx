@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export default function LandingPage() {
   const testimonials = [
     {
@@ -1566,11 +1568,11 @@ export default function LandingPage() {
             © {new Date().getFullYear()} Lembrei. Feito para autônomos brasileiros.
           </div>
 
-          <div className="footer-links">
-            {['Termos', 'Privacidade', 'Contato'].map(l => (
-              <a key={l} href="#">{l}</a>
-            ))}
-          </div>
+              <div className="footer-links">
+  <Link to="/termos">Termos</Link>
+  <Link to="/privacidade">Privacidade</Link>
+  <Link to="/contato">Contato</Link>
+</div>
         </div>
       </footer>
     </div>
