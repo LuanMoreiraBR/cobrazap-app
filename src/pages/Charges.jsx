@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  CreditCard,
   HelpCircle,
   MessageCircle,
   Pencil,
@@ -72,7 +73,7 @@ function generateInstallments({ amount, dueDate, installments }) {
   if (!totalAmount || totalAmount <= 0 || !dueDate || totalInstallments < 2) {
     return []
   }
-
+  
   const installmentAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100
   const totalCalculated = installmentAmount * totalInstallments
   const difference = Number((totalAmount - totalCalculated).toFixed(2))
@@ -100,6 +101,8 @@ const automationTips = {
     'Informe quantos dias depois do vencimento o sistema deve enviar uma nova cobrança. Exemplo: 3 envia 3 dias após vencer.',
   dueDate:
     'Essa é a data base da cobrança. Todos os lembretes automáticos serão calculados a partir dela.',
+  paymentMethod:
+    'Escolha se esta cobrança aceitará apenas Pix ou Pix com opção de pagamento por cartão através do link do Mercado Pago.',
 }
 
 function InfoTooltip({ text }) {
@@ -125,6 +128,8 @@ function createInitialForm() {
     message_type: 'friendly',
     payment_type: 'single',
     installments: 2,
+    payment_methods: ['pix'],
+    credit_card_enabled: false,
     automation: {
       oneMonthBefore: false,
       fifteenDaysBefore: false,
@@ -134,8 +139,6 @@ function createInitialForm() {
     },
   }
 }
-
-const initialForm = createInitialForm()
 
 function getStatusLabel(status) {
   if (status === 'pago') return 'Pago'
@@ -161,6 +164,15 @@ function getPaymentTypeLabel(charge) {
   }
 
   return 'À vista'
+}
+
+function getPaymentMethodLabel(charge) {
+  if (charge.credit_card_enabled) return 'Pix + Cartão'
+  return 'Pix'
+}
+
+function hasGeneratedPayment(charge) {
+  return Boolean(charge.pix_qr_code || charge.payment_url)
 }
 
 function isOverdue(charge) {
@@ -257,7 +269,8 @@ export default function Charges() {
         charge.client?.name?.toLowerCase().includes(term) ||
         charge.description?.toLowerCase().includes(term) ||
         formatDate(charge.due_date).includes(term) ||
-        getPaymentTypeLabel(charge).toLowerCase().includes(term)
+        getPaymentTypeLabel(charge).toLowerCase().includes(term) ||
+        getPaymentMethodLabel(charge).toLowerCase().includes(term)
 
       return matchesStatus && matchesSearch
     })
@@ -288,6 +301,10 @@ export default function Charges() {
     if (!form.amount || Number(form.amount) <= 0) return 'Informe um valor válido.'
     if (!form.due_date) return 'Informe a data de vencimento.'
     if (!form.message_type) return 'Selecione o tom da mensagem.'
+
+    if (!Array.isArray(form.payment_methods) || form.payment_methods.length === 0) {
+      return 'Selecione pelo menos uma forma de pagamento.'
+    }
 
     if (!editingId && form.payment_type === 'installment') {
       if (!form.installments || Number(form.installments) < 2) {
@@ -325,6 +342,8 @@ export default function Charges() {
       installment_group_id: null,
       installment_number: null,
       installment_total: null,
+      payment_methods: form.payment_methods,
+      credit_card_enabled: form.credit_card_enabled,
     })
 
     const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
@@ -332,7 +351,7 @@ export default function Charges() {
     await syncAutomation(chargeWithPix)
 
     setCharges((current) => [chargeWithPix, ...current])
-    setSuccess('Cobrança criada, Pix gerado e automações programadas.')
+    setSuccess('Cobrança criada, pagamento gerado e automações programadas.')
   }
 
   async function createInstallmentCharges() {
@@ -360,6 +379,8 @@ export default function Charges() {
         installment_number: installment.installment_number,
         installment_total: installment.installment_total,
         original_amount: originalAmount,
+        payment_methods: form.payment_methods,
+        credit_card_enabled: form.credit_card_enabled,
       })
 
       const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
@@ -371,7 +392,7 @@ export default function Charges() {
 
     setCharges((current) => [...createdCharges, ...current])
     setSuccess(
-      `Parcelamento criado com sucesso: ${generatedInstallments.length} parcelas com Pix e automações programadas.`,
+      `Parcelamento criado com sucesso: ${generatedInstallments.length} parcelas com pagamento e automações programadas.`,
     )
   }
 
@@ -405,11 +426,13 @@ export default function Charges() {
           installment_number: existing?.installment_number || null,
           installment_total: existing?.installment_total || null,
           original_amount: existing?.original_amount || Number(form.amount),
+          payment_methods: form.payment_methods,
+          credit_card_enabled: form.credit_card_enabled,
         })
 
-        const chargeWithPix = updated.pix_qr_code
-          ? updated
-          : await createPixPaymentForCharge(updated.id, user.id)
+        const chargeWithPix = hasGeneratedPayment(updated)
+  ? updated
+  : await createPixPaymentForCharge(updated.id, user.id)
 
         await syncAutomation(chargeWithPix)
 
@@ -419,7 +442,7 @@ export default function Charges() {
           ),
         )
 
-        setSuccess('Cobrança atualizada, Pix gerado e automações recriadas.')
+        setSuccess('Cobrança atualizada, pagamento gerado e automações recriadas.')
       } else if (form.payment_type === 'installment') {
         await createInstallmentCharges()
       } else {
@@ -447,9 +470,9 @@ export default function Charges() {
         ),
       )
 
-      setSuccess('Pix gerado com sucesso.')
+      setSuccess('Pagamento gerado com sucesso.')
     } catch (err) {
-      setError(err.message || 'Erro ao gerar Pix')
+      setError(err.message || 'Erro ao gerar pagamento')
     } finally {
       setGeneratingPixId(null)
     }
@@ -467,6 +490,8 @@ export default function Charges() {
       message_type: charge.message_type ?? 'friendly',
       payment_type: charge.payment_type ?? 'single',
       installments: charge.installment_total ?? 2,
+      payment_methods: charge.payment_methods ?? ['pix'],
+      credit_card_enabled: charge.credit_card_enabled ?? false,
       automation: createInitialForm().automation,
     })
   }
@@ -509,15 +534,15 @@ export default function Charges() {
   function handleSend(charge) {
     if (!charge.client) return
 
-    const message = charge.pix_qr_code
-      ? buildPixMessage(charge)
-      : buildMessage(
-          charge.message_type || 'friendly',
-          charge.client.name,
-          charge.description,
-          charge.amount,
-          charge.due_date,
-        )
+    const message = hasGeneratedPayment(charge)
+  ? buildPixMessage(charge)
+  : buildMessage(
+      charge.message_type || 'friendly',
+      charge.client.name,
+      charge.description,
+      charge.amount,
+      charge.due_date,
+    )
 
     openWhatsApp(charge.client.phone, message)
   }
@@ -577,7 +602,7 @@ export default function Charges() {
               {editingId ? 'Editar cobrança' : 'Nova cobrança'}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Informe o cliente, valor, vencimento, forma de cobrança e regras de lembrete.
+              Informe o cliente, valor, vencimento, forma de cobrança, forma de pagamento e regras de lembrete.
             </p>
           </div>
 
@@ -627,6 +652,38 @@ export default function Charges() {
             className="input"
           />
 
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <label className="block text-sm font-semibold text-[#070D2D]">
+                Forma de pagamento
+              </label>
+              <InfoTooltip text={automationTips.paymentMethod} />
+            </div>
+
+            <select
+              value={form.credit_card_enabled ? 'pix_credit_card' : 'pix'}
+              onChange={(e) => {
+                const enableCreditCard = e.target.value === 'pix_credit_card'
+
+                setForm({
+                  ...form,
+                  credit_card_enabled: enableCreditCard,
+                  payment_methods: enableCreditCard
+                    ? ['pix', 'credit_card']
+                    : ['pix'],
+                })
+              }}
+              className="input"
+            >
+              <option value="pix">Pix</option>
+              <option value="pix_credit_card">Pix + Cartão de crédito</option>
+            </select>
+
+            <p className="mt-2 text-xs text-slate-500">
+              No cartão de crédito, o cliente receberá um link de pagamento pelo Mercado Pago.
+            </p>
+          </div>
+
           {!editingId ? (
             <>
               <div>
@@ -673,7 +730,7 @@ export default function Charges() {
               ) : null}
             </>
           ) : (
-            <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               Durante a edição, o sistema altera apenas esta cobrança específica.
               Para criar novas parcelas, cancele a edição e cadastre uma nova cobrança parcelada.
             </div>
@@ -707,7 +764,7 @@ export default function Charges() {
                 Prévia do parcelamento
               </h3>
               <p className="text-sm text-slate-600">
-                O sistema criará {installmentPreview.length} cobranças futuras, cada uma com seu próprio Pix, vencimento e automação.
+                O sistema criará {installmentPreview.length} cobranças futuras, cada uma com seu próprio pagamento, vencimento e automação.
               </p>
             </div>
 
@@ -854,7 +911,7 @@ export default function Charges() {
               Lista de cobranças
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Filtre por status ou busque por cliente, descrição, data e parcela.
+              Filtre por status ou busque por cliente, descrição, data, parcela ou forma de pagamento.
             </p>
           </div>
 
@@ -875,7 +932,7 @@ export default function Charges() {
 
               <input
                 type="text"
-                placeholder="Buscar por cliente, descrição, parcela ou data"
+                placeholder="Buscar por cliente, descrição, parcela, pagamento ou data"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="input pl-11"
@@ -929,11 +986,22 @@ export default function Charges() {
                           {getPaymentTypeLabel(charge)}
                         </span>
 
-                        {charge.pix_qr_code ? (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            Pix gerado
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          Pix
+                        </span>
+
+                        {charge.credit_card_enabled ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                            <CreditCard size={13} />
+                            Cartão habilitado
                           </span>
                         ) : null}
+
+                        {hasGeneratedPayment(charge) ? (
+  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+    Pagamento gerado
+  </span>
+) : null}
                       </div>
 
                       <p className="mt-1 text-sm text-slate-600">
@@ -956,26 +1024,30 @@ export default function Charges() {
                         </p>
                       ) : null}
 
-                      {charge.pix_qr_code ? (
+                      {hasGeneratedPayment(charge) ? (
                         <div className="mt-3 rounded-2xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-3 text-sm text-slate-700">
                           <p className="font-semibold text-[#070D2D]">
-                            Pix disponível
+                            Pagamento disponível
                           </p>
 
                           <p className="mt-1 text-xs text-slate-500">
-                            O WhatsApp enviará o código Pix copia e cola junto com a cobrança.
+                            {charge.credit_card_enabled
+  ? 'O WhatsApp enviará o link seguro do Mercado Pago para o cliente escolher Pix ou cartão.'
+  : 'O WhatsApp enviará o código Pix copia e cola junto com a cobrança.'}
                           </p>
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigator.clipboard.writeText(charge.pix_qr_code)
-                              }
-                              className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
-                            >
-                              Copiar Pix
-                            </button>
+                            {charge.pix_qr_code ? (
+  <button
+    type="button"
+    onClick={() =>
+      navigator.clipboard.writeText(charge.pix_qr_code)
+    }
+    className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
+  >
+    Copiar Pix
+  </button>
+) : null}
 
                             {charge.payment_url ? (
                               <a
@@ -997,18 +1069,18 @@ export default function Charges() {
                         <button
                           type="button"
                           onClick={() => handleGeneratePix(charge)}
-                          disabled={generatingPixId === charge.id || !!charge.pix_qr_code}
+                          disabled={generatingPixId === charge.id || hasGeneratedPayment(charge)}
                           className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                            charge.pix_qr_code
+                            hasGeneratedPayment(charge)
                               ? 'cursor-default border border-emerald-200 bg-emerald-50 text-emerald-700'
                               : 'border border-[#5B4BFF]/20 bg-[#5B4BFF]/10 text-[#5B4BFF] hover:bg-[#5B4BFF]/15'
                           } disabled:opacity-70`}
                         >
                           {generatingPixId === charge.id
                             ? 'Gerando...'
-                            : charge.pix_qr_code
-                              ? 'Pix gerado'
-                              : 'Gerar Pix'}
+                            : hasGeneratedPayment(charge)
+  ? 'Pagamento gerado'
+  : 'Gerar pagamento'}
                         </button>
                       ) : null}
 

@@ -27,12 +27,16 @@ export async function createCharge({
   status = 'pendente',
   message_type = 'friendly',
 
-  // Campos novos para cobrança parcelada
+  // Cobrança única ou parcelada
   payment_type = 'single',
   installment_group_id = null,
   installment_number = null,
   installment_total = null,
   original_amount = null,
+
+  // Métodos de pagamento
+  payment_methods = ['pix'],
+  credit_card_enabled = false,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -51,6 +55,9 @@ export async function createCharge({
         installment_number,
         installment_total,
         original_amount: original_amount ?? amount,
+
+        payment_methods,
+        credit_card_enabled,
       },
     ])
     .select(`
@@ -77,12 +84,16 @@ export async function updateCharge({
   status,
   message_type = 'friendly',
 
-  // Campos novos para cobrança parcelada
+  // Cobrança única ou parcelada
   payment_type = 'single',
   installment_group_id = null,
   installment_number = null,
   installment_total = null,
   original_amount = null,
+
+  // Métodos de pagamento
+  payment_methods = ['pix'],
+  credit_card_enabled = false,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -99,6 +110,9 @@ export async function updateCharge({
       installment_number,
       installment_total,
       original_amount: original_amount ?? amount,
+
+      payment_methods,
+      credit_card_enabled,
     })
     .eq('id', id)
     .eq('user_id', user_id)
@@ -154,8 +168,26 @@ export async function createPixPaymentForCharge(chargeId, userId) {
     },
   })
 
-  if (error) throw error
-  if (!data?.ok) throw new Error(data?.error || 'Erro ao gerar Pix.')
+  if (error) {
+    console.error('Erro bruto da Edge Function:', error)
+
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        console.error('Resposta da Edge Function:', errorBody)
+        throw new Error(errorBody?.error || 'Erro ao gerar pagamento.')
+      } catch {
+        throw new Error(error.message || 'Erro ao chamar função de pagamento.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao chamar função de pagamento.')
+  }
+
+  if (!data?.ok) {
+    console.error('Erro retornado pela função:', data)
+    throw new Error(data?.error || 'Erro ao gerar pagamento.')
+  }
 
   return data.charge
 }

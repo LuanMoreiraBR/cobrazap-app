@@ -1,19 +1,76 @@
 import { supabase } from './supabaseClient'
 import { calculateScheduledFor } from '../utils/scheduleDate'
 
-function buildPixBlock({ pixQrCode, paymentUrl }) {
-  if (!pixQrCode) return ''
+function formatCurrencyBRL(amount) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(amount || 0))
+}
+
+function formatDateBR(dueDate) {
+  if (!dueDate) return '-'
+  return new Date(`${dueDate}T00:00:00`).toLocaleDateString('pt-BR')
+}
+
+function isInstallmentCharge(charge) {
+  return charge?.payment_type === 'installment'
+}
+
+function hasCreditCardEnabled(charge) {
+  return charge?.credit_card_enabled === true
+}
+
+function getInstallmentText(charge) {
+  if (!isInstallmentCharge(charge)) return ''
+
+  const number = charge.installment_number || '-'
+  const total = charge.installment_total || '-'
+
+  return `Parcela ${number}/${total}`
+}
+
+function getCleanDescription(charge) {
+  const description = charge?.description || 'cobrança'
+
+  if (!isInstallmentCharge(charge)) {
+    return description
+  }
+
+  return description
+    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
+    .trim()
+}
+
+function buildPaymentBlock(charge) {
+  const pixQrCode = charge?.pix_qr_code || ''
+  const paymentUrl = charge?.payment_url || ''
+  const creditCardEnabled = hasCreditCardEnabled(charge)
+
+  if (!pixQrCode && !paymentUrl) return ''
+
+  if (creditCardEnabled) {
+    return `
+
+Para pagar, acesse o link seguro do Mercado Pago abaixo.
+
+Você poderá escolher Pix ou cartão de crédito:
+
+${paymentUrl || 'Link de pagamento indisponível no momento.'}
+
+Após o pagamento, a baixa será identificada automaticamente.`
+  }
 
   return `
 
 Para pagar via Pix, use o código copia e cola abaixo:
 
-${pixQrCode}
+${pixQrCode || 'Pix indisponível no momento.'}
 
 ${paymentUrl ? `Link de pagamento:
-${paymentUrl}` : ''}
+${paymentUrl}
 
-Após o pagamento, a baixa será identificada automaticamente.`
+` : ''}Após o pagamento, a baixa será identificada automaticamente.`
 }
 
 export function buildAutomationMessage({
@@ -24,24 +81,91 @@ export function buildAutomationMessage({
   messageType,
   pixQrCode,
   paymentUrl,
+  paymentType = 'single',
+  installmentNumber = null,
+  installmentTotal = null,
+  originalAmount = null,
+  paymentMethods = ['pix'],
+  creditCardEnabled = false,
 }) {
-  const value = new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(Number(amount || 0))
+  const charge = {
+    description,
+    amount,
+    due_date: dueDate,
+    payment_type: paymentType,
+    installment_number: installmentNumber,
+    installment_total: installmentTotal,
+    original_amount: originalAmount,
+    payment_methods: paymentMethods,
+    credit_card_enabled: creditCardEnabled,
+    pix_qr_code: pixQrCode,
+    payment_url: paymentUrl,
+  }
 
-  const date = new Date(`${dueDate}T00:00:00`).toLocaleDateString('pt-BR')
-  const pixBlock = buildPixBlock({ pixQrCode, paymentUrl })
+  const value = formatCurrencyBRL(amount)
+  const date = formatDateBR(dueDate)
+  const cleanDescription = getCleanDescription(charge)
+  const installmentText = getInstallmentText(charge)
+  const paymentBlock = buildPaymentBlock(charge)
+
+  if (isInstallmentCharge(charge)) {
+    if (messageType === 'urgent') {
+      return `Olá ${clientName}, tudo bem?
+
+A ${installmentText} da sua dívida encontra-se pendente ou em atraso.
+
+Descrição: ${cleanDescription}
+Valor da parcela: ${value}
+Vencimento: ${date}
+
+Pedimos a regularização o quanto antes.${paymentBlock}`
+    }
+
+    if (messageType === 'professional') {
+      return `Olá ${clientName}, tudo bem?
+
+Identificamos uma parcela pendente referente à sua dívida.
+
+${installmentText}
+Descrição: ${cleanDescription}
+Valor da parcela: ${value}
+Vencimento: ${date}
+
+Ficamos à disposição para qualquer dúvida.${paymentBlock}`
+    }
+
+    return `Olá ${clientName}, tudo bem?
+
+Passando para lembrar que a ${installmentText} da sua dívida está em aberto.
+
+Descrição: ${cleanDescription}
+Valor da parcela: ${value}
+Vencimento: ${date}
+
+Se já pagou, pode desconsiderar esta mensagem.${paymentBlock}`
+  }
 
   if (messageType === 'urgent') {
-    return `Olá ${clientName}, tudo bem? Identificamos que o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}, ainda está pendente. Poderia verificar, por gentileza?${pixBlock}`
+    return `Olá ${clientName}, tudo bem?
+
+Identificamos que o pagamento referente a "${cleanDescription}", no valor de ${value}, com vencimento em ${date}, ainda está pendente.
+
+Pedimos a regularização o quanto antes.${paymentBlock}`
   }
 
   if (messageType === 'professional') {
-    return `Olá ${clientName}, tudo bem? Passando para lembrar sobre o pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Ficamos à disposição.${pixBlock}`
+    return `Olá ${clientName}, tudo bem?
+
+Passando para lembrar sobre a cobrança referente a "${cleanDescription}", no valor de ${value}, com vencimento em ${date}.
+
+Ficamos à disposição para qualquer dúvida.${paymentBlock}`
   }
 
-  return `Olá ${clientName}, tudo bem? Só passando para lembrar do pagamento referente a "${description}", no valor de ${value}, com vencimento em ${date}. Qualquer dúvida, fico à disposição.${pixBlock}`
+  return `Olá ${clientName}, tudo bem?
+
+Só passando para lembrar do pagamento referente a "${cleanDescription}", no valor de ${value}, com vencimento em ${date}.
+
+Qualquer dúvida, fico à disposição.${paymentBlock}`
 }
 
 export function buildDefaultRules(selectedRules) {
@@ -190,6 +314,13 @@ export async function replaceAutomationForCharge({ user_id, charge, rules }) {
       messageType: rule.message_type,
       pixQrCode: charge.pix_qr_code,
       paymentUrl: charge.payment_url,
+
+      paymentType: charge.payment_type || 'single',
+      installmentNumber: charge.installment_number || null,
+      installmentTotal: charge.installment_total || null,
+      originalAmount: charge.original_amount || null,
+      paymentMethods: charge.payment_methods || ['pix'],
+      creditCardEnabled: charge.credit_card_enabled === true,
     }),
     phone: client.phone,
     status: 'pending',
@@ -211,7 +342,15 @@ export async function getScheduledMessages(userId) {
         id,
         description,
         due_date,
-        amount
+        amount,
+        payment_type,
+        installment_number,
+        installment_total,
+        original_amount,
+        payment_methods,
+        credit_card_enabled,
+        pix_qr_code,
+        payment_url
       ),
       client:clients (
         id,

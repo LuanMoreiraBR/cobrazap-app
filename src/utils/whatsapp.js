@@ -29,6 +29,10 @@ function isInstallmentCharge(charge) {
   return charge?.payment_type === 'installment'
 }
 
+function hasCreditCardEnabled(charge) {
+  return charge?.credit_card_enabled === true
+}
+
 function getInstallmentText(charge) {
   if (!isInstallmentCharge(charge)) return ''
 
@@ -36,6 +40,26 @@ function getInstallmentText(charge) {
   const total = charge.installment_total || '-'
 
   return `Parcela ${number}/${total}`
+}
+
+function buildPaymentInstructions(charge) {
+  const pix = charge?.pix_qr_code || ''
+  const paymentUrl = charge?.payment_url || ''
+  const creditCardEnabled = hasCreditCardEnabled(charge)
+
+  if (creditCardEnabled) {
+    return `Para pagar, acesse o link seguro do Mercado Pago abaixo.
+
+Você poderá escolher Pix ou cartão de crédito:
+
+${paymentUrl || 'Link de pagamento indisponível no momento.'}`
+  }
+
+  return `Para pagar via Pix, use o código copia e cola abaixo:
+
+${pix || 'Pix indisponível no momento.'}
+
+${paymentUrl ? `Link de pagamento:\n${paymentUrl}` : ''}`
 }
 
 export function buildMessage(type, clientName, description, amount, dueDate) {
@@ -132,9 +156,8 @@ export function buildPixMessage(charge) {
   const description = getChargeDescription(charge)
   const amount = getChargeAmount(charge)
   const dueDate = getChargeDueDate(charge)
-  const pix = charge?.pix_qr_code || ''
-  const paymentUrl = charge?.payment_url || ''
   const installmentText = getInstallmentText(charge)
+  const paymentInstructions = buildPaymentInstructions(charge)
 
   if (isInstallmentCharge(charge)) {
     return `Olá ${clientName}, tudo bem?
@@ -145,22 +168,18 @@ Descrição: ${description}
 Valor da parcela: ${amount}
 Vencimento: ${dueDate}
 
-Para pagar via Pix, use o código copia e cola abaixo:
+${paymentInstructions}
 
-${pix}
-
-${paymentUrl ? `Link de pagamento:\n${paymentUrl}\n\n` : ''}Após o pagamento, a baixa será identificada automaticamente.`
+Após o pagamento, a baixa será identificada automaticamente.`
   }
 
   return `Olá ${clientName}, tudo bem?
 
 Passando para lembrar sobre a cobrança referente a "${description}", no valor de ${amount}, com vencimento em ${dueDate}.
 
-Para pagar via Pix, use o código copia e cola abaixo:
+${paymentInstructions}
 
-${pix}
-
-${paymentUrl ? `Link de pagamento:\n${paymentUrl}\n\n` : ''}Após o pagamento, a baixa será identificada automaticamente.`
+Após o pagamento, a baixa será identificada automaticamente.`
 }
 
 export function openWhatsApp(phone, message) {

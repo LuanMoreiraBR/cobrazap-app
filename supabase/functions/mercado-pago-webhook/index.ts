@@ -148,18 +148,19 @@ Deno.serve(async (req) => {
 
     const wasAlreadyPaid = chargeBeforeUpdate?.status === 'pago'
 
-    const { error: updateChargeError } = await supabase
-      .from('charges')
-      .update({
-        payment_provider: 'mercado_pago',
-        payment_id: String(payment.id),
-        payment_status: payment.status,
-        status: isPaid ? 'pago' : chargeBeforeUpdate?.status,
-        paid_at: isPaid
-          ? chargeBeforeUpdate?.paid_at || new Date().toISOString()
-          : chargeBeforeUpdate?.paid_at,
-      })
-      .eq('id', chargeId)
+   const { error: updateChargeError } = await supabase
+  .from('charges')
+  .update({
+    payment_provider: 'mercado_pago',
+    payment_id: String(payment.id),
+    payment_status: payment.status,
+    mercado_pago_payment_id: String(payment.id),
+    status: isPaid ? 'pago' : chargeBeforeUpdate?.status,
+    paid_at: isPaid
+      ? chargeBeforeUpdate?.paid_at || new Date().toISOString()
+      : chargeBeforeUpdate?.paid_at,
+  })
+  .eq('id', chargeId)
 
     if (updateChargeError) throw updateChargeError
 
@@ -168,7 +169,7 @@ Deno.serve(async (req) => {
         .from('scheduled_messages')
         .update({
           status: 'cancelled',
-          error_message: 'Cobrança paga via Pix.',
+          error_message: 'Cobrança paga via Mercado Pago.',
         })
         .eq('charge_id', chargeId)
         .eq('status', 'pending')
