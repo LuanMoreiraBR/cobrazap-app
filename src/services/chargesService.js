@@ -131,23 +131,38 @@ export async function updateCharge({
 }
 
 export async function markChargeAsPaid(id, userId) {
-  const { data, error } = await supabase
-    .from('charges')
-    .update({ status: 'pago' })
-    .eq('id', id)
-    .eq('user_id', userId)
-    .select(`
-      *,
-      client:clients (
-        id,
-        name,
-        phone
-      )
-    `)
-    .single()
+  const { data, error } = await supabase.functions.invoke(
+    'confirm-manual-payment',
+    {
+      body: {
+        charge_id: id,
+        user_id: userId,
+      },
+    },
+  )
 
-  if (error) throw error
-  return data
+  if (error) {
+    console.error('Erro bruto da confirmação manual:', error)
+
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        console.error('Resposta da Edge Function:', errorBody)
+        throw new Error(errorBody?.error || 'Erro ao marcar cobrança como paga.')
+      } catch {
+        throw new Error(error.message || 'Erro ao marcar cobrança como paga.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao marcar cobrança como paga.')
+  }
+
+  if (!data?.ok) {
+    console.error('Erro retornado pela função:', data)
+    throw new Error(data?.error || 'Erro ao marcar cobrança como paga.')
+  }
+
+  return data.charge
 }
 
 export async function deleteCharge(id, userId) {

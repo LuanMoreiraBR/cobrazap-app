@@ -513,23 +513,24 @@ export default function Charges() {
   }
 
   async function handleMarkAsPaid(id) {
-    resetMessages()
+  resetMessages()
 
-    try {
-      await markChargeAsPaid(id, user.id)
-      await cancelPendingMessagesForCharge(id, user.id)
+  try {
+    const updatedCharge = await markChargeAsPaid(id, user.id)
 
-      setCharges((current) =>
-        current.map((charge) =>
-          charge.id === id ? { ...charge, status: 'pago' } : charge,
-        ),
-      )
+    setCharges((current) =>
+      current.map((charge) =>
+        charge.id === id ? { ...charge, ...updatedCharge } : charge,
+      ),
+    )
 
-      setSuccess('Cobrança marcada como paga. Lembretes pendentes foram cancelados.')
-    } catch (err) {
-      setError(err.message || 'Erro ao atualizar cobrança')
-    }
+    setSuccess(
+      'Cobrança marcada como paga. A confirmação foi enviada pelo WhatsApp e os lembretes pendentes foram cancelados.',
+    )
+  } catch (err) {
+    setError(err.message || 'Erro ao atualizar cobrança')
   }
+}
 
   function handleSend(charge) {
     if (!charge.client) return
