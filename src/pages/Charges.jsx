@@ -34,6 +34,63 @@ function getTodayInputDate() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function createInstallmentGroupId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function addMonthsKeepingDueDay(dateString, monthsToAdd) {
+  const originalDate = new Date(dateString + 'T00:00:00')
+  const originalDay = originalDate.getDate()
+
+  const targetYear = originalDate.getFullYear()
+  const targetMonth = originalDate.getMonth() + monthsToAdd
+
+  const lastDayOfTargetMonth = new Date(
+    targetYear,
+    targetMonth + 1,
+    0,
+  ).getDate()
+
+  const finalDay = Math.min(originalDay, lastDayOfTargetMonth)
+  const finalDate = new Date(targetYear, targetMonth, finalDay)
+
+  const year = finalDate.getFullYear()
+  const month = String(finalDate.getMonth() + 1).padStart(2, '0')
+  const day = String(finalDate.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function generateInstallments({ amount, dueDate, installments }) {
+  const totalAmount = Number(amount)
+  const totalInstallments = Number(installments)
+
+  if (!totalAmount || totalAmount <= 0 || !dueDate || totalInstallments < 2) {
+    return []
+  }
+
+  const installmentAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100
+  const totalCalculated = installmentAmount * totalInstallments
+  const difference = Number((totalAmount - totalCalculated).toFixed(2))
+
+  return Array.from({ length: totalInstallments }, (_, index) => {
+    const isLast = index === totalInstallments - 1
+
+    return {
+      installment_number: index + 1,
+      installment_total: totalInstallments,
+      amount: isLast
+        ? Number((installmentAmount + difference).toFixed(2))
+        : installmentAmount,
+      due_date: addMonthsKeepingDueDay(dueDate, index),
+    }
+  })
+}
+
 const automationTips = {
   oneMonthBefore: 'Programa uma mensagem para 30 dias antes da data de vencimento.',
   fifteenDaysBefore: 'Programa uma mensagem para 15 dias antes da data de vencimento.',
@@ -59,20 +116,26 @@ function InfoTooltip({ text }) {
   )
 }
 
-const initialForm = {
-  client_id: '',
-  description: '',
-  amount: '',
-  due_date: getTodayInputDate(),
-  message_type: 'friendly',
-  automation: {
-    oneMonthBefore: false,
-    fifteenDaysBefore: false,
-    fiveDaysBefore: false,
-    onDueDate: true,
-    afterDueDays: '',
-  },
+function createInitialForm() {
+  return {
+    client_id: '',
+    description: '',
+    amount: '',
+    due_date: getTodayInputDate(),
+    message_type: 'friendly',
+    payment_type: 'single',
+    installments: 2,
+    automation: {
+      oneMonthBefore: false,
+      fifteenDaysBefore: false,
+      fiveDaysBefore: false,
+      onDueDate: true,
+      afterDueDays: '',
+    },
+  }
 }
+
+const initialForm = createInitialForm()
 
 function getStatusLabel(status) {
   if (status === 'pago') return 'Pago'
@@ -90,6 +153,14 @@ function getMessageTypeLabel(type) {
   if (type === 'professional') return 'Profissional'
   if (type === 'urgent') return 'Urgente'
   return 'Amigável'
+}
+
+function getPaymentTypeLabel(charge) {
+  if (charge.payment_type === 'installment') {
+    return `Parcela ${charge.installment_number}/${charge.installment_total}`
+  }
+
+  return 'À vista'
 }
 
 function isOverdue(charge) {
@@ -129,10 +200,7 @@ export default function Charges() {
   const [editingId, setEditingId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('todos')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState(() => ({
-    ...initialForm,
-    due_date: getTodayInputDate(),
-  }))
+  const [form, setForm] = useState(() => createInitialForm())
 
   useEffect(() => {
     async function loadData() {
@@ -154,6 +222,17 @@ export default function Charges() {
     if (user?.id) loadData()
   }, [user])
 
+  const installmentPreview = useMemo(() => {
+    if (editingId) return []
+    if (form.payment_type !== 'installment') return []
+
+    return generateInstallments({
+      amount: Number(form.amount),
+      dueDate: form.due_date,
+      installments: Number(form.installments),
+    })
+  }, [editingId, form.payment_type, form.amount, form.due_date, form.installments])
+
   const enrichedCharges = useMemo(() => {
     return charges.map((charge) => ({
       ...charge,
@@ -161,8 +240,8 @@ export default function Charges() {
         charge.status === 'pago'
           ? 'pago'
           : isOverdue(charge)
-          ? 'atrasado'
-          : 'pendente',
+            ? 'atrasado'
+            : 'pendente',
     }))
   }, [charges])
 
@@ -177,7 +256,8 @@ export default function Charges() {
         term === '' ||
         charge.client?.name?.toLowerCase().includes(term) ||
         charge.description?.toLowerCase().includes(term) ||
-        formatDate(charge.due_date).includes(term)
+        formatDate(charge.due_date).includes(term) ||
+        getPaymentTypeLabel(charge).toLowerCase().includes(term)
 
       return matchesStatus && matchesSearch
     })
@@ -198,10 +278,7 @@ export default function Charges() {
   }
 
   function resetForm() {
-    setForm({
-      ...initialForm,
-      due_date: getTodayInputDate(),
-    })
+    setForm(createInitialForm())
     setEditingId(null)
   }
 
@@ -211,6 +288,17 @@ export default function Charges() {
     if (!form.amount || Number(form.amount) <= 0) return 'Informe um valor válido.'
     if (!form.due_date) return 'Informe a data de vencimento.'
     if (!form.message_type) return 'Selecione o tom da mensagem.'
+
+    if (!editingId && form.payment_type === 'installment') {
+      if (!form.installments || Number(form.installments) < 2) {
+        return 'Informe pelo menos 2 parcelas.'
+      }
+
+      if (Number(form.installments) > 36) {
+        return 'O limite máximo é de 36 parcelas.'
+      }
+    }
+
     return ''
   }
 
@@ -224,71 +312,127 @@ export default function Charges() {
     })
   }
 
-  async function handleSubmit(e) {
-  e.preventDefault()
-  resetMessages()
+  async function createSingleCharge() {
+    const newCharge = await createCharge({
+      user_id: user.id,
+      client_id: form.client_id,
+      description: form.description.trim(),
+      amount: Number(form.amount),
+      due_date: form.due_date,
+      message_type: form.message_type,
+      payment_type: 'single',
+      original_amount: Number(form.amount),
+      installment_group_id: null,
+      installment_number: null,
+      installment_total: null,
+    })
 
-  const validationError = validateForm()
-  if (validationError) {
-    setError(validationError)
-    return
+    const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
+
+    await syncAutomation(chargeWithPix)
+
+    setCharges((current) => [chargeWithPix, ...current])
+    setSuccess('Cobrança criada, Pix gerado e automações programadas.')
   }
 
-  setSaving(true)
+  async function createInstallmentCharges() {
+    const installmentGroupId = createInstallmentGroupId()
+    const originalAmount = Number(form.amount)
 
-  try {
-    if (editingId) {
-      const existing = charges.find((charge) => charge.id === editingId)
+    const generatedInstallments = generateInstallments({
+      amount: originalAmount,
+      dueDate: form.due_date,
+      installments: Number(form.installments),
+    })
 
-      const updated = await updateCharge({
-        id: editingId,
-        user_id: user.id,
-        client_id: form.client_id,
-        description: form.description.trim(),
-        amount: Number(form.amount),
-        due_date: form.due_date,
-        status: existing?.status || 'pendente',
-        message_type: form.message_type,
-      })
+    const createdCharges = []
 
-      const chargeWithPix = updated.pix_qr_code
-        ? updated
-        : await createPixPaymentForCharge(updated.id, user.id)
-
-      await syncAutomation(chargeWithPix)
-
-      setCharges((current) =>
-        current.map((charge) =>
-          charge.id === editingId ? chargeWithPix : charge,
-        ),
-      )
-
-      setSuccess('Cobrança atualizada, Pix gerado e automações recriadas.')
-    } else {
+    for (const installment of generatedInstallments) {
       const newCharge = await createCharge({
         user_id: user.id,
         client_id: form.client_id,
-        description: form.description.trim(),
-        amount: Number(form.amount),
-        due_date: form.due_date,
+        description: `${form.description.trim()} - Parcela ${installment.installment_number}/${installment.installment_total}`,
+        amount: installment.amount,
+        due_date: installment.due_date,
         message_type: form.message_type,
+        payment_type: 'installment',
+        installment_group_id: installmentGroupId,
+        installment_number: installment.installment_number,
+        installment_total: installment.installment_total,
+        original_amount: originalAmount,
       })
 
       const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
 
       await syncAutomation(chargeWithPix)
 
-      setCharges((current) => [chargeWithPix, ...current])
-      setSuccess('Cobrança criada, Pix gerado e automações programadas.')
+      createdCharges.push(chargeWithPix)
     }
 
-    resetForm()
-  } catch (err) {
-    setError(err.message || 'Erro ao salvar cobrança')
-  } finally {
-    setSaving(false)
+    setCharges((current) => [...createdCharges, ...current])
+    setSuccess(
+      `Parcelamento criado com sucesso: ${generatedInstallments.length} parcelas com Pix e automações programadas.`,
+    )
   }
-}
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    resetMessages()
+
+    const validationError = validateForm()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      if (editingId) {
+        const existing = charges.find((charge) => charge.id === editingId)
+
+        const updated = await updateCharge({
+          id: editingId,
+          user_id: user.id,
+          client_id: form.client_id,
+          description: form.description.trim(),
+          amount: Number(form.amount),
+          due_date: form.due_date,
+          status: existing?.status || 'pendente',
+          message_type: form.message_type,
+          payment_type: existing?.payment_type || 'single',
+          installment_group_id: existing?.installment_group_id || null,
+          installment_number: existing?.installment_number || null,
+          installment_total: existing?.installment_total || null,
+          original_amount: existing?.original_amount || Number(form.amount),
+        })
+
+        const chargeWithPix = updated.pix_qr_code
+          ? updated
+          : await createPixPaymentForCharge(updated.id, user.id)
+
+        await syncAutomation(chargeWithPix)
+
+        setCharges((current) =>
+          current.map((charge) =>
+            charge.id === editingId ? chargeWithPix : charge,
+          ),
+        )
+
+        setSuccess('Cobrança atualizada, Pix gerado e automações recriadas.')
+      } else if (form.payment_type === 'installment') {
+        await createInstallmentCharges()
+      } else {
+        await createSingleCharge()
+      }
+
+      resetForm()
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar cobrança')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleGeneratePix(charge) {
     resetMessages()
@@ -321,7 +465,9 @@ export default function Charges() {
       amount: String(charge.amount ?? ''),
       due_date: charge.due_date ?? '',
       message_type: charge.message_type ?? 'friendly',
-      automation: initialForm.automation,
+      payment_type: charge.payment_type ?? 'single',
+      installments: charge.installment_total ?? 2,
+      automation: createInitialForm().automation,
     })
   }
 
@@ -385,7 +531,7 @@ export default function Charges() {
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Cobranças</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Crie cobranças, programe lembretes automáticos e envie mensagens profissionais.
+            Crie cobranças, parcele dívidas, programe lembretes automáticos e envie mensagens profissionais.
           </p>
         </div>
 
@@ -395,10 +541,33 @@ export default function Charges() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatBox title="Em aberto" value={pending.length} icon={Clock3} className="bg-amber-100 text-amber-700" />
-        <StatBox title="Atrasadas" value={overdue.length} icon={AlertTriangle} className="bg-red-100 text-red-700" />
-        <StatBox title="Pagas" value={paid.length} icon={CheckCircle2} className="bg-emerald-100 text-emerald-700" />
-        <StatBox title="Total em aberto" value={formatCurrency(totalOpen)} icon={Wallet} className="bg-[#5B4BFF]/10 text-[#5B4BFF]" />
+        <StatBox
+          title="Em aberto"
+          value={pending.length}
+          icon={Clock3}
+          className="bg-amber-100 text-amber-700"
+        />
+
+        <StatBox
+          title="Atrasadas"
+          value={overdue.length}
+          icon={AlertTriangle}
+          className="bg-red-100 text-red-700"
+        />
+
+        <StatBox
+          title="Pagas"
+          value={paid.length}
+          icon={CheckCircle2}
+          className="bg-emerald-100 text-emerald-700"
+        />
+
+        <StatBox
+          title="Total em aberto"
+          value={formatCurrency(totalOpen)}
+          icon={Wallet}
+          className="bg-[#5B4BFF]/10 text-[#5B4BFF]"
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="card">
@@ -408,7 +577,7 @@ export default function Charges() {
               {editingId ? 'Editar cobrança' : 'Nova cobrança'}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Informe o cliente, valor, vencimento e regras de lembrete.
+              Informe o cliente, valor, vencimento, forma de cobrança e regras de lembrete.
             </p>
           </div>
 
@@ -452,11 +621,63 @@ export default function Charges() {
           <input
             type="number"
             step="0.01"
-            placeholder="Valor"
+            placeholder="Valor total da dívida"
             value={form.amount}
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
             className="input"
           />
+
+          {!editingId ? (
+            <>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-[#070D2D]">
+                  Forma de cobrança
+                </label>
+
+                <select
+                  value={form.payment_type}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      payment_type: e.target.value,
+                      installments: e.target.value === 'single' ? 2 : form.installments,
+                    })
+                  }
+                  className="input"
+                >
+                  <option value="single">Cobrança à vista</option>
+                  <option value="installment">Parcelar dívida</option>
+                </select>
+              </div>
+
+              {form.payment_type === 'installment' ? (
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-[#070D2D]">
+                    Quantidade de parcelas
+                  </label>
+
+                  <input
+                    type="number"
+                    min="2"
+                    max="36"
+                    value={form.installments}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        installments: e.target.value,
+                      })
+                    }
+                    className="input"
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Durante a edição, o sistema altera apenas esta cobrança específica.
+              Para criar novas parcelas, cancele a edição e cadastre uma nova cobrança parcelada.
+            </div>
+          )}
 
           <div className="md:col-span-2">
             <div className="mb-2 flex items-center gap-2">
@@ -474,10 +695,44 @@ export default function Charges() {
             />
 
             <p className="mt-2 text-xs text-slate-500">
-              Os lembretes abaixo serão programados com base nessa data.
+              Na cobrança parcelada, esta será a data da primeira parcela. As próximas serão criadas nos meses seguintes.
             </p>
           </div>
         </div>
+
+        {installmentPreview.length > 0 ? (
+          <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-lg font-semibold text-[#070D2D]">
+                Prévia do parcelamento
+              </h3>
+              <p className="text-sm text-slate-600">
+                O sistema criará {installmentPreview.length} cobranças futuras, cada uma com seu próprio Pix, vencimento e automação.
+              </p>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-100 bg-white">
+              {installmentPreview.map((item) => (
+                <div
+                  key={item.installment_number}
+                  className="grid gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 md:grid-cols-3"
+                >
+                  <span className="font-semibold text-[#070D2D]">
+                    Parcela {item.installment_number}/{item.installment_total}
+                  </span>
+
+                  <span className="text-slate-600">
+                    {formatCurrency(item.amount)}
+                  </span>
+
+                  <span className="text-slate-600">
+                    Vence em {formatDate(item.due_date)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-5 rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4">
           <div className="flex items-start gap-3">
@@ -520,6 +775,7 @@ export default function Charges() {
                   }
                   className="h-4 w-4 accent-[#5B4BFF]"
                 />
+
                 <span className="flex items-center gap-2">
                   {label}
                   <InfoTooltip text={automationTips[key]} />
@@ -572,8 +828,10 @@ export default function Charges() {
             {saving
               ? 'Salvando...'
               : editingId
-              ? 'Atualizar cobrança'
-              : 'Salvar cobrança'}
+                ? 'Atualizar cobrança'
+                : form.payment_type === 'installment'
+                  ? 'Salvar parcelamento'
+                  : 'Salvar cobrança'}
           </button>
 
           {editingId ? (
@@ -596,7 +854,7 @@ export default function Charges() {
               Lista de cobranças
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Filtre por status ou busque por cliente, descrição e data.
+              Filtre por status ou busque por cliente, descrição, data e parcela.
             </p>
           </div>
 
@@ -614,9 +872,10 @@ export default function Charges() {
 
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
               <input
                 type="text"
-                placeholder="Buscar por cliente, descrição ou data"
+                placeholder="Buscar por cliente, descrição, parcela ou data"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="input pl-11"
@@ -631,9 +890,11 @@ export default function Charges() {
           ) : filteredCharges.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
               <Wallet className="mx-auto text-[#5B4BFF]" size={34} />
+
               <p className="mt-3 font-semibold text-[#070D2D]">
                 Nenhuma cobrança encontrada
               </p>
+
               <p className="mt-1 text-sm text-slate-500">
                 Crie uma nova cobrança para começar a acompanhar seus recebimentos.
               </p>
@@ -664,6 +925,10 @@ export default function Charges() {
                           {getMessageTypeLabel(charge.message_type || 'friendly')}
                         </span>
 
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                          {getPaymentTypeLabel(charge)}
+                        </span>
+
                         {charge.pix_qr_code ? (
                           <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                             Pix gerado
@@ -682,11 +947,21 @@ export default function Charges() {
                         </strong>
                       </p>
 
+                      {charge.payment_type === 'installment' ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Dívida original:{' '}
+                          <strong className="text-[#070D2D]">
+                            {formatCurrency(charge.original_amount || charge.amount)}
+                          </strong>
+                        </p>
+                      ) : null}
+
                       {charge.pix_qr_code ? (
                         <div className="mt-3 rounded-2xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-3 text-sm text-slate-700">
                           <p className="font-semibold text-[#070D2D]">
                             Pix disponível
                           </p>
+
                           <p className="mt-1 text-xs text-slate-500">
                             O WhatsApp enviará o código Pix copia e cola junto com a cobrança.
                           </p>
@@ -732,8 +1007,8 @@ export default function Charges() {
                           {generatingPixId === charge.id
                             ? 'Gerando...'
                             : charge.pix_qr_code
-                            ? 'Pix gerado'
-                            : 'Gerar Pix'}
+                              ? 'Pix gerado'
+                              : 'Gerar Pix'}
                         </button>
                       ) : null}
 

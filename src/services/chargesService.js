@@ -26,6 +26,13 @@ export async function createCharge({
   due_date,
   status = 'pendente',
   message_type = 'friendly',
+
+  // Campos novos para cobrança parcelada
+  payment_type = 'single',
+  installment_group_id = null,
+  installment_number = null,
+  installment_total = null,
+  original_amount = null,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -38,6 +45,12 @@ export async function createCharge({
         due_date,
         status,
         message_type,
+
+        payment_type,
+        installment_group_id,
+        installment_number,
+        installment_total,
+        original_amount: original_amount ?? amount,
       },
     ])
     .select(`
@@ -63,6 +76,13 @@ export async function updateCharge({
   due_date,
   status,
   message_type = 'friendly',
+
+  // Campos novos para cobrança parcelada
+  payment_type = 'single',
+  installment_group_id = null,
+  installment_number = null,
+  installment_total = null,
+  original_amount = null,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -73,6 +93,12 @@ export async function updateCharge({
       due_date,
       status,
       message_type,
+
+      payment_type,
+      installment_group_id,
+      installment_number,
+      installment_total,
+      original_amount: original_amount ?? amount,
     })
     .eq('id', id)
     .eq('user_id', user_id)
@@ -96,7 +122,14 @@ export async function markChargeAsPaid(id, userId) {
     .update({ status: 'pago' })
     .eq('id', id)
     .eq('user_id', userId)
-    .select()
+    .select(`
+      *,
+      client:clients (
+        id,
+        name,
+        phone
+      )
+    `)
     .single()
 
   if (error) throw error
@@ -112,6 +145,7 @@ export async function deleteCharge(id, userId) {
 
   if (error) throw error
 }
+
 export async function createPixPaymentForCharge(chargeId, userId) {
   const { data, error } = await supabase.functions.invoke('create-pix-payment', {
     body: {
