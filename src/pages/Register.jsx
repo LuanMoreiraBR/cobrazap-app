@@ -23,7 +23,7 @@ export default function Register() {
     try {
       await signUp(form)
       alert('Conta criada com sucesso. Agora faça login.')
-      navigate('/login')
+      navigate('/planos')
     } catch (err) {
       setError(err.message || 'Erro ao criar conta')
     } finally {

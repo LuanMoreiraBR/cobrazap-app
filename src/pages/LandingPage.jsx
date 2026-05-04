@@ -115,6 +115,38 @@ export default function LandingPage() {
     { icon: '⚖️', label: 'Advogados & Contadores' },
   ]
 
+  const pricingPlans = [
+    {
+      name: 'Essencial',
+      price: 'R$ 150',
+      period: '/mês',
+      description: 'Para equipes que estão começando a organizar cobranças.',
+      highlighted: false,
+      features: [
+        'Até 50 usuários cadastrados',
+        'Até 100 mensagens por mês',
+        'Painel de clientes e cobranças',
+        'Mensagens prontas para WhatsApp',
+        'Controle de status dos pagamentos',
+      ],
+    },
+    {
+      name: 'Ilimitado',
+      price: 'R$ 250',
+      period: '/mês',
+      description: 'Para quem quer escalar sem se preocupar com limites.',
+      highlighted: true,
+      badge: 'Mais completo',
+      features: [
+        'Usuários ilimitados',
+        'Mensagens ilimitadas',
+        'Painel de clientes e cobranças',
+        'Mensagens prontas para WhatsApp',
+        'Controle de status dos pagamentos',
+      ],
+    },
+  ]
+
   return (
     <div className="landing-page">
       <style>{`
@@ -157,8 +189,8 @@ export default function LandingPage() {
         }
 
         @keyframes scroll-left {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+          0% { transform: translate3d(0, 0, 0); }
+          100% { transform: translate3d(-50%, 0, 0); }
         }
 
         @keyframes glow {
@@ -176,11 +208,20 @@ export default function LandingPage() {
           margin: 0 auto;
         }
 
-        .hero-animate { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; }
-        .hero-animate-2 { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; animation-delay: 0.15s; }
-        .hero-animate-3 { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; animation-delay: 0.3s; }
-        .hero-animate-4 { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; animation-delay: 0.45s; }
-        .hero-animate-5 { animation: fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; animation-delay: 0.6s; }
+        .hero-animate,
+        .hero-animate-2,
+        .hero-animate-3,
+        .hero-animate-4,
+        .hero-animate-5 {
+          animation: fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both;
+          will-change: transform, opacity;
+        }
+
+        .hero-animate-2 { animation-delay: 0.04s; }
+        .hero-animate-3 { animation-delay: 0.08s; }
+        .hero-animate-4 { animation-delay: 0.12s; }
+        .hero-animate-5 { animation-delay: 0.16s; }
+
         .card-float { animation: float 5s ease-in-out infinite; }
 
         .logo-ring-anim {
@@ -530,7 +571,11 @@ export default function LandingPage() {
         .marquee-track {
           display: flex;
           width: max-content;
+          min-width: max-content;
           animation: scroll-left 30s linear infinite;
+          will-change: transform;
+          transform: translate3d(0, 0, 0);
+          backface-visibility: hidden;
         }
 
         .marquee-track:hover {
@@ -826,6 +871,103 @@ export default function LandingPage() {
           color: #fff;
         }
 
+        .pricing-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 22px;
+          max-width: 900px;
+          margin: 0 auto;
+        }
+
+        .pricing-card {
+          position: relative;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 28px;
+          padding: 32px;
+          overflow: hidden;
+        }
+
+        .pricing-card-highlighted {
+          background: linear-gradient(180deg, rgba(91,75,255,0.18), rgba(255,255,255,0.04));
+          border-color: rgba(91,75,255,0.45);
+          box-shadow: 0 24px 80px rgba(91,75,255,0.18);
+        }
+
+        .pricing-badge {
+          display: inline-flex;
+          border-radius: 100px;
+          padding: 6px 12px;
+          background: rgba(91,75,255,0.22);
+          border: 1px solid rgba(91,75,255,0.4);
+          color: #c4bfff;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 14px;
+        }
+
+        .pricing-name {
+          font-size: 22px;
+          font-weight: 800;
+          margin: 0;
+        }
+
+        .pricing-description {
+          color: #64748b;
+          font-size: 14px;
+          line-height: 1.7;
+          margin: 12px 0 0;
+        }
+
+        .pricing-price {
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+          margin-top: 26px;
+        }
+
+        .pricing-price-value {
+          font-size: clamp(36px, 5vw, 48px);
+          font-weight: 800;
+          letter-spacing: -0.04em;
+        }
+
+        .pricing-period {
+          color: #64748b;
+          font-size: 15px;
+          font-weight: 600;
+        }
+
+        .pricing-features {
+          list-style: none;
+          padding: 0;
+          margin: 28px 0 30px;
+          display: grid;
+          gap: 12px;
+        }
+
+        .pricing-features li {
+          color: #cbd5e1;
+          font-size: 14px;
+          line-height: 1.45;
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .pricing-check {
+          color: #10b981;
+          font-weight: 800;
+          flex: 0 0 auto;
+        }
+
+        .pricing-card .btn-primary,
+        .pricing-card .btn-outline {
+          width: 100%;
+        }
+
         .final-cta {
           position: relative;
           overflow: hidden;
@@ -982,6 +1124,10 @@ export default function LandingPage() {
             text-align: center;
           }
 
+          .pricing-grid {
+            grid-template-columns: 1fr;
+          }
+
           .audience-pills {
             justify-content: center;
           }
@@ -1036,6 +1182,16 @@ export default function LandingPage() {
 
           .hero-grid {
             gap: 34px;
+          }
+
+          .hero-animate,
+          .hero-animate-2,
+          .hero-animate-3,
+          .hero-animate-4,
+          .hero-animate-5 {
+            animation: none;
+            opacity: 1;
+            transform: none;
           }
 
           .hero-title {
@@ -1153,7 +1309,7 @@ export default function LandingPage() {
           }
 
           .marquee-track {
-            animation-duration: 24s;
+            animation-duration: 18s;
           }
 
           .marquee-item {
@@ -1189,7 +1345,8 @@ export default function LandingPage() {
 
           .benefit-card,
           .step-card,
-          .metric-card {
+          .metric-card,
+          .pricing-card {
             padding: 22px;
             border-radius: 20px;
           }
@@ -1316,7 +1473,7 @@ export default function LandingPage() {
 
           <div className="nav-actions">
             <a href="/login" className="btn-outline">Entrar</a>
-            <a href="/cadastro" className="btn-primary">Começar grátis</a>
+            <a href="/cadastro" className="btn-primary">Começar</a>
           </div>
         </div>
       </nav>
@@ -1344,7 +1501,7 @@ export default function LandingPage() {
             </p>
 
             <div className="hero-actions hero-animate-4">
-              <a href="/cadastro" className="btn-primary">Começar grátis →</a>
+              <a href="/cadastro" className="btn-primary">Começar →</a>
               <a href="#como-funciona" className="btn-outline">Ver como funciona</a>
             </div>
 
@@ -1531,6 +1688,48 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className="section section-muted" id="planos">
+        <div className="container">
+          <div className="section-head">
+            <div className="section-label">Planos</div>
+            <h2 className="section-title">Escolha o plano ideal para o seu momento</h2>
+            <p className="section-subtitle">Comece com limites claros ou vá direto para o uso ilimitado.</p>
+          </div>
+
+          <div className="pricing-grid">
+            {pricingPlans.map((plan) => (
+              <div
+                key={plan.name}
+                className={`pricing-card ${plan.highlighted ? 'pricing-card-highlighted' : ''}`}
+              >
+                {plan.badge && <div className="pricing-badge">{plan.badge}</div>}
+
+                <h3 className="pricing-name">{plan.name}</h3>
+                <p className="pricing-description">{plan.description}</p>
+
+                <div className="pricing-price">
+                  <span className="pricing-price-value">{plan.price}</span>
+                  <span className="pricing-period">{plan.period}</span>
+                </div>
+
+                <ul className="pricing-features">
+                  {plan.features.map((feature) => (
+                    <li key={feature}>
+                      <span className="pricing-check">✓</span>
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <a href="/cadastro" className={plan.highlighted ? 'btn-primary' : 'btn-outline'}>
+                  Escolher {plan.name}
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="final-cta">
         <div className="hero-glow" style={{ width: 600, height: 400, background: 'rgba(91,75,255,0.2)', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }} />
         <div className="container">
@@ -1545,10 +1744,10 @@ export default function LandingPage() {
               <span style={{ color: '#5B4BFF' }}>Comece a receber de verdade.</span>
             </h2>
 
-            <p className="final-copy">Crie sua conta grátis e envie sua primeira cobrança em menos de 5 minutos.</p>
+            <p className="final-copy">Crie sua conta e envie sua primeira cobrança em menos de 5 minutos.</p>
 
             <div className="final-actions">
-              <a href="/cadastro" className="btn-primary">Criar minha conta grátis →</a>
+              <a href="/cadastro" className="btn-primary">Criar minha conta →</a>
               <a href="/login" className="btn-outline">Já tenho conta</a>
             </div>
 
@@ -1568,11 +1767,11 @@ export default function LandingPage() {
             © {new Date().getFullYear()} Lembrei. Feito para autônomos brasileiros.
           </div>
 
-              <div className="footer-links">
-  <Link to="/termos">Termos</Link>
-  <Link to="/privacidade">Privacidade</Link>
-  <Link to="/contato">Contato</Link>
-</div>
+          <div className="footer-links">
+            <Link to="/termos">Termos</Link>
+            <Link to="/privacidade">Privacidade</Link>
+            <Link to="/contato">Contato</Link>
+          </div>
         </div>
       </footer>
     </div>

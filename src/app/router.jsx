@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
 import ProtectedRoute from '../components/ProtectedRoute'
+import SubscriptionRoute from '../components/SubscriptionRoute'
 import LandingPage from '../pages/LandingPage'
 import Login from '../pages/Login'
 import Register from '../pages/Register'
@@ -9,6 +10,7 @@ import Clients from '../pages/Clients'
 import Charges from '../pages/Charges'
 import Automations from '../pages/Automations'
 import Settings from '../pages/Settings'
+import Plans from '../pages/Plans'
 import Privacidade from '../pages/Privacidade'
 import Termos from '../pages/Termos'
 
@@ -25,8 +27,6 @@ export const router = createBrowserRouter([
     path: '/cadastro',
     element: <Register />,
   },
-
-  // 👇 ADICIONE AQUI
   {
     path: '/privacidade',
     element: <Privacidade />,
@@ -35,12 +35,21 @@ export const router = createBrowserRouter([
     path: '/termos',
     element: <Termos />,
   },
-
+  {
+    path: '/planos',
+    element: (
+      <ProtectedRoute>
+        <Plans />
+      </ProtectedRoute>
+    ),
+  },
   {
     path: '/app',
     element: (
       <ProtectedRoute>
-        <AppLayout />
+        <SubscriptionRoute>
+          <AppLayout />
+        </SubscriptionRoute>
       </ProtectedRoute>
     ),
     children: [

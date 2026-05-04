@@ -10,14 +10,14 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
+import UsageBadge from '../UsageBadge'
 
 const navItems = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/app/clientes', label: 'Clientes', icon: Users },
   { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
   { to: '/app/automacoes', label: 'Automações', icon: BellRing },
-  { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap }
-
+  { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap },
 ]
 
 const navClass = ({ isActive }) =>
@@ -93,10 +93,15 @@ export default function AppLayout() {
                 alt="Lembrei"
                 className="h-9 w-9 rounded-xl"
               />
+
               <div>
                 <p className="font-bold text-[#070D2D]">Lembrei</p>
                 <p className="text-xs text-slate-500">Cobrança automática</p>
               </div>
+            </div>
+
+            <div className="mb-3 border-b border-slate-100 pb-3">
+              <UsageBadge />
             </div>
 
             <nav className="space-y-1">
@@ -134,6 +139,7 @@ export default function AppLayout() {
         {openUserMenu ? (
           <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
             <p className="text-xs text-slate-500">Usuário atual</p>
+
             <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
               {userName}
             </p>
@@ -170,8 +176,14 @@ export default function AppLayout() {
             const Icon = item.icon
 
             return (
-              <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={navClass}
+              >
                 <Icon size={19} className="shrink-0" />
+
                 <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   {item.label}
                 </span>
@@ -182,19 +194,20 @@ export default function AppLayout() {
 
         <div className="mt-auto space-y-3 pt-8">
           <div className="overflow-visible">
-  <div className="flex items-center gap-3 rounded-2xl px-1 py-2 transition group-hover:bg-[#5B4BFF]/10">
-    <div className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm">
-      {userInitial}
-    </div>
+            <div className="flex items-center gap-3 rounded-2xl px-1 py-2 transition group-hover:bg-[#5B4BFF]/10">
+              <div className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm">
+                {userInitial}
+              </div>
 
-    <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-      <p className="text-xs text-slate-500">Usuário atual</p>
-      <p className="truncate text-sm font-semibold text-[#070D2D]">
-        {userName}
-      </p>
-    </div>
-  </div>
-</div>
+              <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                <p className="text-xs text-slate-500">Usuário atual</p>
+
+                <p className="truncate text-sm font-semibold text-[#070D2D]">
+                  {userName}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <button
             type="button"
@@ -211,6 +224,22 @@ export default function AppLayout() {
       </aside>
 
       <main className="min-h-screen p-4 pt-20 md:p-8 md:pl-28">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
+              Painel
+            </p>
+
+            <h2 className="text-xl font-bold text-[#070D2D]">
+              Olá, {userName}
+            </h2>
+          </div>
+
+          <div className="flex justify-start md:justify-end">
+            <UsageBadge />
+          </div>
+        </div>
+
         <Outlet />
       </main>
     </div>

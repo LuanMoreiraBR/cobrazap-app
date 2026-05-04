@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const BUSINESS_TIME_ZONE = 'America/Sao_Paulo'
 const BUSINESS_START_HOUR = 8
-const BUSINESS_END_HOUR = 18
+const BUSINESS_END_HOUR = 22
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -76,22 +76,121 @@ function getMaxAttempts() {
   return value
 }
 
-function getBusinessHourNow() {
-  const parts = new Intl.DateTimeFormat('pt-BR', {
+function getBrazilBusinessTime() {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: BUSINESS_TIME_ZONE,
+    weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   }).formatToParts(new Date())
 
+  const weekday = parts.find((part) => part.type === 'weekday')?.value || ''
   const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0)
   const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0)
 
+  const isWeekday = !['Sat', 'Sun'].includes(weekday)
+  const isBusinessHour = hour >= BUSINESS_START_HOUR && hour < BUSINESS_END_HOUR
+
   return {
+    timezone: BUSINESS_TIME_ZONE,
+    weekday,
     hour,
     minute,
-    isBusinessHour:
-      hour >= BUSINESS_START_HOUR && hour < BUSINESS_END_HOUR,
+    isWeekday,
+    isBusinessHour,
+    canSend: isWeekday && isBusinessHour,
+  }
+}
+
+async function canSendMessageForUser(supabase: any, userId: string) {
+  const yearMonth = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(new Date())
+    .slice(0, 7)
+
+  const { data: subscription, error: subscriptionError } = await supabase
+    .from('user_subscriptions')
+    .select(`
+      *,
+      plan:platform_plans (*)
+    `)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (subscriptionError) throw subscriptionError
+
+  if (!subscription || subscription.status !== 'active') {
+    return {
+      allowed: false,
+      reason: 'Usuário sem assinatura ativa.',
+    }
+  }
+
+  if (
+    subscription.current_period_end &&
+    new Date(subscription.current_period_end) <= new Date()
+  ) {
+    return {
+      allowed: false,
+      reason: 'Assinatura expirada.',
+    }
+  }
+
+  const maxMessages = subscription.plan?.max_messages_per_month
+
+  if (!maxMessages) {
+    return {
+      allowed: true,
+      reason: 'Plano ilimitado.',
+    }
+  }
+
+  const { data: usage, error: usageError } = await supabase
+    .from('user_monthly_usage')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('year_month', yearMonth)
+    .maybeSingle()
+
+  if (usageError) throw usageError
+
+  const messagesSent = Number(usage?.messages_sent || 0)
+
+  if (messagesSent >= Number(maxMessages)) {
+    return {
+      allowed: false,
+      reason: `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`,
+    }
+  }
+
+  return {
+    allowed: true,
+    reason: 'Dentro do limite.',
+  }
+}
+
+async function incrementMessageUsage({
+  supabase,
+  userId,
+  messageId,
+}: {
+  supabase: any
+  userId: string
+  messageId: string
+}) {
+  const { error } = await supabase.rpc('increment_user_message_usage', {
+    p_user_id: userId,
+    p_source_table: 'scheduled_messages',
+    p_source_id: messageId,
+  })
+
+  if (error) {
+    console.error('Erro ao contabilizar uso mensal:', error)
+    throw error
   }
 }
 
@@ -143,16 +242,15 @@ Deno.serve(async (req) => {
     )
   }
 
-  const businessTime = getBusinessHourNow()
+  const businessTime = getBrazilBusinessTime()
 
-  if (!businessTime.isBusinessHour) {
+  if (!businessTime.canSend) {
     return jsonResponse({
       ok: true,
       skipped: true,
-      reason: `Fora do horário permitido. Envio permitido somente das ${BUSINESS_START_HOUR}:00 às ${BUSINESS_END_HOUR}:00, horário de Brasília.`,
-      timezone: BUSINESS_TIME_ZONE,
-      current_hour: businessTime.hour,
-      current_minute: businessTime.minute,
+      reason:
+        'Fora do horário permitido. Envio permitido somente de segunda a sexta, das 08:00 às 18:00, horário de Brasília.',
+      business_time: businessTime,
     })
   }
 
@@ -285,6 +383,31 @@ Deno.serve(async (req) => {
           continue
         }
 
+        const permission = await canSendMessageForUser(supabase, message.user_id)
+
+        if (!permission.allowed) {
+          await supabase
+            .from('scheduled_messages')
+            .update({
+              status: 'failed',
+              error_message: permission.reason,
+              last_attempt_at: new Date().toISOString(),
+              processing_started_at: null,
+            })
+            .eq('id', message.id)
+
+          results.push({
+            id: message.id,
+            user_id: message.user_id,
+            charge_id: message.charge_id,
+            client_id: message.client_id,
+            status: 'failed',
+            error: permission.reason,
+          })
+
+          continue
+        }
+
         const to = formatBrazilWhatsApp(message.phone)
         const text = String(message.message_text || '').trim()
 
@@ -309,6 +432,12 @@ Deno.serve(async (req) => {
             processing_started_at: null,
           })
           .eq('id', message.id)
+
+        await incrementMessageUsage({
+          supabase,
+          userId: message.user_id,
+          messageId: message.id,
+        })
 
         results.push({
           id: message.id,
@@ -346,8 +475,10 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok: true,
+      business_time: businessTime,
+      allowed_days: 'Segunda a sexta',
+      allowed_hours: `${BUSINESS_START_HOUR}:00-${BUSINESS_END_HOUR}:00`,
       timezone: BUSINESS_TIME_ZONE,
-      business_hours: `${BUSINESS_START_HOUR}:00-${BUSINESS_END_HOUR}:00`,
       found: messages?.length || 0,
       sent: results.filter((item) => item.status === 'sent').length,
       cancelled: results.filter((item) => item.status === 'cancelled').length,
