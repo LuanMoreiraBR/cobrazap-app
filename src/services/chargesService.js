@@ -206,3 +206,37 @@ export async function createPixPaymentForCharge(chargeId, userId) {
 
   return data.charge
 }
+export async function sendChargeWhatsApp(chargeId, userId) {
+  const { data, error } = await supabase.functions.invoke(
+    'send-charge-whatsapp',
+    {
+      body: {
+        charge_id: chargeId,
+        user_id: userId,
+      },
+    },
+  )
+
+  if (error) {
+    console.error('Erro bruto da Edge Function WhatsApp:', error)
+
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        console.error('Resposta da Edge Function WhatsApp:', errorBody)
+        throw new Error(errorBody?.error || 'Erro ao enviar WhatsApp.')
+      } catch {
+        throw new Error(error.message || 'Erro ao chamar função de WhatsApp.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao chamar função de WhatsApp.')
+  }
+
+  if (!data?.ok) {
+    console.error('Erro retornado pela função WhatsApp:', data)
+    throw new Error(data?.error || 'Erro ao enviar WhatsApp.')
+  }
+
+  return data
+}

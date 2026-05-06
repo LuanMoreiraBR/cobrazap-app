@@ -21,6 +21,7 @@ import {
   deleteCharge,
   getCharges,
   markChargeAsPaid,
+  sendChargeWhatsApp,
   updateCharge,
 } from '../services/chargesService'
 import {
@@ -32,7 +33,12 @@ import { formatCurrency, formatDate } from '../utils/format'
 import { buildMessage, buildPixMessage, openWhatsApp } from '../utils/whatsapp'
 
 function getTodayInputDate() {
-  return new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 function createInstallmentGroupId() {
@@ -329,7 +335,22 @@ export default function Charges() {
     })
   }
 
-  async function createSingleCharge() {
+    function shouldSendWhatsAppNow(charge) {
+  if (!form.automation?.onDueDate) return false
+  if (!charge?.due_date) return false
+
+  return charge.due_date <= getTodayInputDate()
+}
+
+  async function sendWhatsAppNowIfNeeded(charge) {
+    if (!shouldSendWhatsAppNow(charge)) return charge
+
+    const result = await sendChargeWhatsApp(charge.id, user.id)
+
+    return result?.charge || charge
+  }
+
+    async function createSingleCharge() {
     const newCharge = await createCharge({
       user_id: user.id,
       client_id: form.client_id,
@@ -350,8 +371,15 @@ export default function Charges() {
 
     await syncAutomation(chargeWithPix)
 
-    setCharges((current) => [chargeWithPix, ...current])
-    setSuccess('Cobrança criada, pagamento gerado e automações programadas.')
+    const finalCharge = await sendWhatsAppNowIfNeeded(chargeWithPix)
+
+    setCharges((current) => [finalCharge, ...current])
+
+    setSuccess(
+      shouldSendWhatsAppNow(chargeWithPix)
+        ? 'Cobrança criada, pagamento gerado, automações programadas e WhatsApp enviado.'
+        : 'Cobrança criada, pagamento gerado e automações programadas.',
+    )
   }
 
   async function createInstallmentCharges() {
@@ -387,7 +415,9 @@ export default function Charges() {
 
       await syncAutomation(chargeWithPix)
 
-      createdCharges.push(chargeWithPix)
+      const finalCharge = await sendWhatsAppNowIfNeeded(chargeWithPix)
+
+      createdCharges.push(finalCharge)
     }
 
     setCharges((current) => [...createdCharges, ...current])
@@ -1135,4 +1165,4 @@ export default function Charges() {
       </div>
     </div>
   )
-}
+  }

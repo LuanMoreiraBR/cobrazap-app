@@ -39,13 +39,7 @@ function formatWhatsAppTo(phone: string | null | undefined) {
   return `whatsapp:+${phoneWithCountryCode}`
 }
 
-function getTwilioFrom() {
-  return (
-    Deno.env.get('TWILIO_WHATSAPP_FROM') ||
-    Deno.env.get('TWILIO_FROM') ||
-    ''
-  )
-}
+
 
 function buildPaymentConfirmationMessage({
   clientName,
@@ -77,31 +71,28 @@ async function sendTwilioWhatsAppMessage({
 }) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const from = getTwilioFrom()
+  const messagingServiceSid = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID')
 
-  if (!accountSid || !authToken || !from) {
-    console.warn('Twilio não configurado. Confirmação não enviada.', {
+  if (!accountSid || !authToken || !messagingServiceSid) {
+    console.error('Twilio não configurado.', {
       hasAccountSid: Boolean(accountSid),
       hasAuthToken: Boolean(authToken),
-      hasFrom: Boolean(from),
+      hasMessagingServiceSid: Boolean(messagingServiceSid),
     })
 
-    return {
-      skipped: true,
-      reason: 'Twilio não configurado.',
-    }
+    throw new Error('Twilio não configurado para envio de confirmação.')
   }
 
   if (!to) {
-    console.warn('Telefone do cliente vazio. Confirmação não enviada.')
-
-    return {
-      skipped: true,
-      reason: 'Telefone do cliente vazio.',
-    }
+    throw new Error('Telefone do cliente vazio. Confirmação não enviada.')
   }
 
   const credentials = btoa(`${accountSid}:${authToken}`)
+
+  const params = new URLSearchParams()
+  params.set('MessagingServiceSid', messagingServiceSid)
+  params.set('To', to)
+  params.set('Body', body)
 
   const response = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
@@ -111,11 +102,7 @@ async function sendTwilioWhatsAppMessage({
         Authorization: `Basic ${credentials}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        From: from,
-        To: to,
-        Body: body,
-      }),
+      body: params,
     },
   )
 
@@ -129,6 +116,7 @@ async function sendTwilioWhatsAppMessage({
   return {
     skipped: false,
     sid: data.sid,
+    status: data.status,
   }
 }
 

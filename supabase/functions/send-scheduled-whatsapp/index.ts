@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const BUSINESS_TIME_ZONE = 'America/Sao_Paulo'
 const BUSINESS_START_HOUR = 8
-const BUSINESS_END_HOUR = 22
+const BUSINESS_END_HOUR = 18
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -197,10 +197,10 @@ async function incrementMessageUsage({
 async function sendWithTwilio({ to, text }: { to: string; text: string }) {
   const accountSid = getEnv('TWILIO_ACCOUNT_SID')
   const authToken = getEnv('TWILIO_AUTH_TOKEN')
-  const from = getEnv('TWILIO_WHATSAPP_FROM')
+  const messagingServiceSid = getEnv('TWILIO_MESSAGING_SERVICE_SID')
 
   const body = new URLSearchParams()
-  body.set('From', from)
+  body.set('MessagingServiceSid', messagingServiceSid)
   body.set('To', to)
   body.set('Body', text)
 
