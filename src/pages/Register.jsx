@@ -22,8 +22,8 @@ export default function Register() {
 
     try {
       await signUp(form)
-      alert('Conta criada com sucesso. Agora faça login.')
-      navigate('/planos')
+
+      navigate('/login?created=1', { replace: true })
     } catch (err) {
       setError(err.message || 'Erro ao criar conta')
     } finally {
@@ -38,7 +38,7 @@ export default function Register() {
           <img src="/icon-lembrei.png" alt="Lembrei" className="h-11 w-11 rounded-2xl" />
           <div>
             <h1 className="text-3xl font-bold text-[#070D2D]">Criar conta</h1>
-            <p className="text-sm text-slate-500">Comece a organizar suas cobranças.</p>
+            <p className="text-sm text-slate-500">Comece com 10 mensagens grátis.</p>
           </div>
         </div>
 
@@ -49,6 +49,7 @@ export default function Register() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             className="input"
+            required
           />
 
           <input
@@ -57,6 +58,7 @@ export default function Register() {
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             className="input"
+            required
           />
 
           <input
@@ -65,12 +67,14 @@ export default function Register() {
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             className="input"
+            required
+            minLength={6}
           />
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
           <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? 'Criando conta...' : 'Criar conta'}
+            {loading ? 'Criando conta...' : 'Criar conta grátis'}
           </button>
         </form>
 

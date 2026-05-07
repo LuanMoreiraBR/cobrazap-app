@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
@@ -5,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   TrendingUp,
+  Users,
   Wallet,
 } from 'lucide-react'
 import PeriodFilter, {
@@ -14,10 +16,11 @@ import PeriodFilter, {
 import { useAuth } from '../contexts/AuthContext'
 import { getCharges } from '../services/chargesService'
 import { formatCurrency, formatDate } from '../utils/format'
+import { getUsageSummary } from '../services/usageService'
 
 function isToday(dateString) {
   const today = new Date()
-  const date = new Date(dateString + 'T00:00:00')
+  const date = new Date(`${dateString}T00:00:00`)
 
   return (
     date.getFullYear() === today.getFullYear() &&
@@ -30,9 +33,65 @@ function isOverdue(charge) {
   if (charge.status === 'pago') return false
 
   const today = new Date()
-  const due = new Date(charge.due_date + 'T00:00:00')
+  const due = new Date(`${charge.due_date}T00:00:00`)
 
   return due < new Date(today.getFullYear(), today.getMonth(), today.getDate())
+}
+
+function getUsagePresentation(usage) {
+  if (!usage) {
+    return {
+      planName: 'Carregando...',
+      messagesLabel: '0/10',
+      clientsLabel: '0/10',
+      messageSubtitle: 'Teste grátis',
+      clientSubtitle: 'Limite disponível',
+      planSubtitle: 'Carregando informações do plano.',
+      planButtonLabel: 'Escolher plano',
+      canCreateClient: true,
+      hasActivePlan: false,
+      isNearLimit: false,
+      isAtLimit: false,
+    }
+  }
+
+  const hasActivePlan = Boolean(usage.hasActivePlan)
+  const planName = hasActivePlan ? usage.plan?.name || 'Plano ativo' : 'Teste grátis'
+
+  const messageLimit = Number(usage.messageLimit || 0)
+  const extraCredits = Number(usage.extraCredits || 0)
+  const messagesUsed = Number(usage.messagesUsed || 0)
+  const totalMessageLimit = Number(usage.totalMessageLimit || 0)
+
+  const clientLimit = Number(usage.clientLimit || 0)
+  const clientsUsed = Number(usage.clientsUsed || 0)
+
+  const percentUsed =
+    totalMessageLimit > 0 ? Math.round((messagesUsed / totalMessageLimit) * 100) : 0
+
+  return {
+    planName,
+    messagesLabel:
+      totalMessageLimit > 0 ? `${messagesUsed}/${totalMessageLimit}` : `${messagesUsed}/∞`,
+    clientsLabel: clientLimit > 0 ? `${clientsUsed}/${clientLimit}` : `${clientsUsed}/∞`,
+    messageSubtitle:
+      extraCredits > 0
+        ? `${extraCredits} créditos extras disponíveis`
+        : hasActivePlan
+          ? planName
+          : 'Teste grátis',
+    clientSubtitle: usage.canCreateClient ? 'Limite disponível' : 'Limite atingido',
+    planSubtitle: hasActivePlan
+      ? 'Gerencie seu plano ou compre mensagens extras.'
+      : 'Você tem 10 mensagens grátis para testar.',
+    planButtonLabel: hasActivePlan ? 'Alterar plano' : 'Escolher plano',
+    canCreateClient: Boolean(usage.canCreateClient),
+    canSendMessage: Boolean(usage.canSendMessage),
+    hasActivePlan,
+    extraCredits,
+    isNearLimit: totalMessageLimit > 0 && percentUsed >= 80 && percentUsed < 100,
+    isAtLimit: totalMessageLimit > 0 && messagesUsed >= totalMessageLimit,
+  }
 }
 
 function DashboardCard({ title, value, subtitle, icon: Icon, color }) {
@@ -50,6 +109,7 @@ function DashboardCard({ title, value, subtitle, icon: Icon, color }) {
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
           <p className="mt-3 text-3xl font-bold text-[#070D2D]">{value}</p>
+
           {subtitle ? (
             <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
           ) : null}
@@ -85,25 +145,38 @@ function StatusBadge({ status }) {
 
 export default function Dashboard() {
   const { user } = useAuth()
+
   const [charges, setCharges] = useState([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('month')
   const [referenceDate, setReferenceDate] = useState(getTodayInputDate())
+  const [usage, setUsage] = useState(null)
 
   useEffect(() => {
-    async function loadCharges() {
+    async function loadDashboard() {
+      if (!user?.id) return
+
+      setLoading(true)
+
       try {
-        const data = await getCharges(user.id)
-        setCharges(data)
+        const [chargesData, usageData] = await Promise.all([
+          getCharges(user.id),
+          getUsageSummary(user.id),
+        ])
+
+        setCharges(chargesData || [])
+        setUsage(usageData)
       } catch (error) {
-        console.error(error.message)
+        console.error('Erro ao carregar dashboard:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    if (user?.id) loadCharges()
-  }, [user])
+    loadDashboard()
+  }, [user?.id])
+
+  const usageInfo = useMemo(() => getUsagePresentation(usage), [usage])
 
   const enrichedCharges = useMemo(() => {
     return charges.map((charge) => ({
@@ -112,8 +185,8 @@ export default function Dashboard() {
         charge.status === 'pago'
           ? 'pago'
           : isOverdue(charge)
-          ? 'atrasado'
-          : 'pendente',
+            ? 'atrasado'
+            : 'pendente',
     }))
   }, [charges])
 
@@ -131,14 +204,16 @@ export default function Dashboard() {
   )
 
   const totalOpen = [...pending, ...overdue].reduce(
-    (acc, item) => acc + Number(item.amount),
+    (acc, item) => acc + Number(item.amount || 0),
     0,
   )
 
-  const totalPaid = paid.reduce((acc, item) => acc + Number(item.amount), 0)
+  const totalPaid = paid.reduce((acc, item) => acc + Number(item.amount || 0), 0)
   const totalGeneral = totalOpen + totalPaid
+
   const paidPercent =
     totalGeneral > 0 ? Math.round((totalPaid / totalGeneral) * 100) : 0
+
   const openPercent =
     totalGeneral > 0 ? Math.round((totalOpen / totalGeneral) * 100) : 0
 
@@ -149,13 +224,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {usageInfo.hasActivePlan && usageInfo.isNearLimit ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <strong>Atenção:</strong> você está perto do limite de mensagens do mês.
+          Você pode comprar créditos extras para continuar enviando cobranças.
+        </div>
+      ) : null}
+
+      {usageInfo.hasActivePlan && usageInfo.isAtLimit ? (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <strong>Limite atingido:</strong> suas mensagens do mês acabaram.
+          Compre créditos extras ou altere seu plano para continuar enviando.
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
         <div>
-          
           <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
             Painel financeiro
           </p>
+
           <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Dashboard</h1>
+
           <p className="mt-1 text-sm text-slate-500">
             Visão geral das cobranças, recebimentos e indicadores.
           </p>
@@ -173,12 +263,60 @@ export default function Dashboard() {
         setReferenceDate={setReferenceDate}
       />
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <DashboardCard
+          title="Mensagens do mês"
+          value={usageInfo.messagesLabel}
+          subtitle={usageInfo.messageSubtitle}
+          icon={Clock3}
+          color={usageInfo.isAtLimit ? 'red' : usageInfo.isNearLimit ? 'amber' : 'purple'}
+        />
+
+        <DashboardCard
+          title="Clientes cadastrados"
+          value={usageInfo.clientsLabel}
+          subtitle={usageInfo.clientSubtitle}
+          icon={Users}
+          color={usageInfo.canCreateClient ? 'blue' : 'red'}
+        />
+
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <p className="text-sm font-medium text-slate-500">Plano</p>
+
+          <p className="mt-3 text-2xl font-bold text-[#070D2D]">
+            {usageInfo.planName}
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            {usageInfo.planSubtitle}
+          </p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              to="/planos"
+              className="inline-flex rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-bold text-white hover:bg-[#4A3BE8]"
+            >
+              {usageInfo.planButtonLabel}
+            </Link>
+
+            {usageInfo.hasActivePlan ? (
+              <Link
+                to="/planos?buy=credits"
+                className="inline-flex rounded-2xl border border-[#5B4BFF]/20 bg-white px-4 py-2 text-sm font-bold text-[#5B4BFF] hover:bg-[#5B4BFF]/5"
+              >
+                Comprar mensagens
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <DashboardCard
           title="Em aberto"
           value={pending.length}
           subtitle={formatCurrency(
-            pending.reduce((acc, item) => acc + Number(item.amount), 0),
+            pending.reduce((acc, item) => acc + Number(item.amount || 0), 0),
           )}
           icon={Clock3}
           color="amber"
@@ -188,7 +326,7 @@ export default function Dashboard() {
           title="Atrasadas"
           value={overdue.length}
           subtitle={formatCurrency(
-            overdue.reduce((acc, item) => acc + Number(item.amount), 0),
+            overdue.reduce((acc, item) => acc + Number(item.amount || 0), 0),
           )}
           icon={AlertTriangle}
           color="red"
@@ -226,6 +364,7 @@ export default function Dashboard() {
               <h2 className="text-xl font-semibold text-[#070D2D]">
                 Resumo financeiro
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Distribuição entre valores recebidos e pendentes no período.
               </p>
@@ -239,7 +378,10 @@ export default function Dashboard() {
           <div className="mt-6 space-y-4">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-emerald-700">Total recebido</span>
+                <span className="font-medium text-emerald-700">
+                  Total recebido
+                </span>
+
                 <strong className="text-lg text-emerald-700">
                   {formatCurrency(totalPaid)}
                 </strong>
@@ -259,7 +401,10 @@ export default function Dashboard() {
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-amber-700">Total pendente</span>
+                <span className="font-medium text-amber-700">
+                  Total pendente
+                </span>
+
                 <strong className="text-lg text-amber-700">
                   {formatCurrency(totalOpen)}
                 </strong>
@@ -280,6 +425,7 @@ export default function Dashboard() {
             <div className="rounded-2xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-600">Total geral</span>
+
                 <strong className="text-lg text-[#070D2D]">
                   {formatCurrency(totalGeneral)}
                 </strong>
@@ -294,6 +440,7 @@ export default function Dashboard() {
               <h2 className="text-xl font-semibold text-[#070D2D]">
                 Próximas cobranças
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Cobranças pendentes do período selecionado.
               </p>
@@ -308,9 +455,11 @@ export default function Dashboard() {
             ) : nextCharges.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center">
                 <CheckCircle2 className="mx-auto text-emerald-500" size={32} />
+
                 <p className="mt-3 font-semibold text-[#070D2D]">
                   Nenhuma cobrança pendente
                 </p>
+
                 <p className="mt-1 text-sm text-slate-500">
                   Quando houver cobranças abertas no período, elas aparecerão aqui.
                 </p>
@@ -326,6 +475,7 @@ export default function Dashboard() {
                       <p className="font-semibold text-[#070D2D]">
                         {charge.client?.name}
                       </p>
+
                       <StatusBadge status={charge.computedStatus} />
                     </div>
 
@@ -338,6 +488,7 @@ export default function Dashboard() {
                     <p className="text-sm font-semibold text-[#070D2D]">
                       {formatCurrency(charge.amount)}
                     </p>
+
                     <p className="text-sm text-slate-500">
                       {formatDate(charge.due_date)}
                     </p>

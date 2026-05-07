@@ -97,3 +97,57 @@ export function isSubscriptionActive(subscription) {
 
   return new Date(subscription.current_period_end) > new Date()
 }
+
+export const MESSAGE_CREDIT_PACKAGES = [50, 100, 250]
+
+export async function getExtraMessageCredits(userId) {
+  const { data, error } = await supabase
+    .from('message_credit_purchases')
+    .select('remaining')
+    .eq('user_id', userId)
+    .eq('status', 'paid')
+    .gt('remaining', 0)
+
+  if (error) throw error
+
+  return (data || []).reduce(
+    (total, item) => total + Number(item.remaining || 0),
+    0,
+  )
+}
+
+export async function createMessageCreditCheckout({
+  userId,
+  quantity,
+  installments = 1,
+}) {
+  const { data, error } = await supabase.functions.invoke(
+    'create-message-credit-checkout',
+    {
+      body: {
+        user_id: userId,
+        quantity,
+        installments,
+      },
+    },
+  )
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao comprar mensagens extras.')
+      } catch {
+        throw new Error(error.message || 'Erro ao comprar mensagens extras.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao comprar mensagens extras.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao comprar mensagens extras.')
+  }
+
+  return data
+}

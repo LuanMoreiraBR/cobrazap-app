@@ -10,6 +10,45 @@ const corsHeaders = {
 const BUSINESS_TIME_ZONE = 'America/Sao_Paulo'
 const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 18
+const FREE_TRIAL_MESSAGE_LIMIT = 10
+
+function formatCurrencyBRL(amount: number | string | null | undefined) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(amount || 0))
+}
+
+function formatDateBR(dateString: string | null | undefined) {
+  if (!dateString) return '-'
+
+  const date = new Date(`${dateString}T00:00:00`)
+  return new Intl.DateTimeFormat('pt-BR').format(date)
+}
+
+function cleanDescription(description: string | null | undefined) {
+  return String(description || 'cobrança')
+    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
+    .trim()
+}
+
+function buildChargeTemplateVariables(message: any) {
+  const charge = Array.isArray(message?.charge)
+    ? message.charge[0]
+    : message?.charge
+
+  const client = Array.isArray(message?.client)
+    ? message.client[0]
+    : message?.client
+
+  return {
+    '1': client?.name || 'cliente',
+    '2': cleanDescription(charge?.description),
+    '3': formatCurrencyBRL(charge?.amount),
+    '4': formatDateBR(charge?.due_date),
+    '5': charge?.payment_url || '',
+  }
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -58,6 +97,16 @@ function formatBrazilWhatsApp(phone: string | null | undefined) {
   return `whatsapp:+55${digits}`
 }
 
+function getCurrentYearMonth() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(new Date())
+    .slice(0, 7)
+}
+
 function getBatchLimit() {
   const value = Number(getOptionalEnv('SCHEDULED_WHATSAPP_BATCH_LIMIT', '50'))
 
@@ -104,13 +153,7 @@ function getBrazilBusinessTime() {
 }
 
 async function canSendMessageForUser(supabase: any, userId: string) {
-  const yearMonth = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-  })
-    .format(new Date())
-    .slice(0, 7)
+  const yearMonth = getCurrentYearMonth()
 
   const { data: subscription, error: subscriptionError } = await supabase
     .from('user_subscriptions')
@@ -123,24 +166,14 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 
   if (subscriptionError) throw subscriptionError
 
-  if (!subscription || subscription.status !== 'active') {
-    return {
-      allowed: false,
-      reason: 'Usuário sem assinatura ativa.',
-    }
-  }
+  const hasActivePlan =
+    subscription?.status === 'active' &&
+    (!subscription.current_period_end ||
+      new Date(subscription.current_period_end) > new Date())
 
-  if (
-    subscription.current_period_end &&
-    new Date(subscription.current_period_end) <= new Date()
-  ) {
-    return {
-      allowed: false,
-      reason: 'Assinatura expirada.',
-    }
-  }
-
-  const maxMessages = subscription.plan?.max_messages_per_month
+  const maxMessages = hasActivePlan
+    ? Number(subscription.plan?.max_messages_per_month || 0)
+    : FREE_TRIAL_MESSAGE_LIMIT
 
   if (!maxMessages) {
     return {
@@ -160,10 +193,12 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 
   const messagesSent = Number(usage?.messages_sent || 0)
 
-  if (messagesSent >= Number(maxMessages)) {
+  if (messagesSent >= maxMessages) {
     return {
       allowed: false,
-      reason: `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`,
+      reason: hasActivePlan
+        ? `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`
+        : `Usuário usou as ${FREE_TRIAL_MESSAGE_LIMIT} mensagens grátis.`,
     }
   }
 
@@ -182,11 +217,11 @@ async function incrementMessageUsage({
   userId: string
   messageId: string
 }) {
-  const { error } = await supabase.rpc('increment_user_message_usage', {
-    p_user_id: userId,
-    p_source_table: 'scheduled_messages',
-    p_source_id: messageId,
-  })
+  const { error } = await supabase.rpc('register_message_usage_with_credits', {
+  p_user_id: userId,
+  p_source_table: 'scheduled_messages',
+  p_source_id: messageId,
+})
 
   if (error) {
     console.error('Erro ao contabilizar uso mensal:', error)
@@ -194,15 +229,30 @@ async function incrementMessageUsage({
   }
 }
 
-async function sendWithTwilio({ to, text }: { to: string; text: string }) {
+async function sendWithTwilio({
+  to,
+  text,
+  contentVariables,
+}: {
+  to: string
+  text: string
+  contentVariables?: Record<string, string>
+}) {
   const accountSid = getEnv('TWILIO_ACCOUNT_SID')
   const authToken = getEnv('TWILIO_AUTH_TOKEN')
   const messagingServiceSid = getEnv('TWILIO_MESSAGING_SERVICE_SID')
+  const chargeTemplateSid = Deno.env.get('TWILIO_CHARGE_TEMPLATE_SID') || ''
 
   const body = new URLSearchParams()
   body.set('MessagingServiceSid', messagingServiceSid)
   body.set('To', to)
-  body.set('Body', text)
+
+  if (chargeTemplateSid && contentVariables) {
+    body.set('ContentSid', chargeTemplateSid)
+    body.set('ContentVariables', JSON.stringify(contentVariables))
+  } else {
+    body.set('Body', text)
+  }
 
   const auth = btoa(`${accountSid}:${authToken}`)
 
@@ -289,7 +339,16 @@ Deno.serve(async (req) => {
         charge:charges (
           id,
           status,
-          payment_status
+          payment_status,
+          description,
+          due_date,
+          amount,
+          payment_url
+        ),
+        client:clients (
+          id,
+          name,
+          phone
         )
       `,
       )
@@ -418,6 +477,7 @@ Deno.serve(async (req) => {
         const twilioResult = await sendWithTwilio({
           to,
           text,
+          contentVariables: buildChargeTemplateVariables(message),
         })
 
         await supabase

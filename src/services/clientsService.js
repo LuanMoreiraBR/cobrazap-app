@@ -23,29 +23,17 @@ export async function canCreateClient(userId) {
 
   if (subscriptionError) throw subscriptionError
 
-  if (!subscription || subscription.status !== 'active') {
-    return {
-      allowed: false,
-      reason: 'Você precisa de um plano ativo para cadastrar clientes.',
-    }
-  }
+  const hasActivePlan =
+    subscription?.status === 'active' &&
+    (!subscription.current_period_end ||
+      new Date(subscription.current_period_end) > new Date())
 
-  if (
-    subscription.current_period_end &&
-    new Date(subscription.current_period_end) <= new Date()
-  ) {
-    return {
-      allowed: false,
-      reason: 'Sua assinatura expirou. Renove seu plano para cadastrar clientes.',
-    }
-  }
-
-  const maxClients = subscription.plan?.max_clients
+  const maxClients = hasActivePlan
+    ? Number(subscription.plan?.max_clients || 0)
+    : 10
 
   if (!maxClients) {
-    return {
-      allowed: true,
-    }
+    return { allowed: true }
   }
 
   const { count, error: countError } = await supabase
@@ -58,13 +46,13 @@ export async function canCreateClient(userId) {
   if (Number(count || 0) >= Number(maxClients)) {
     return {
       allowed: false,
-      reason: `Seu plano permite até ${maxClients} clientes cadastrados.`,
+      reason: hasActivePlan
+        ? `Seu plano permite até ${maxClients} clientes cadastrados.`
+        : `Seu teste grátis permite até ${maxClients} clientes. Escolha um plano para cadastrar mais clientes.`,
     }
   }
 
-  return {
-    allowed: true,
-  }
+  return { allowed: true }
 }
 
 export async function createClient({ user_id, name, phone, notes }) {

@@ -55,7 +55,7 @@ export default function LandingPage() {
   const benefits = [
     {
       icon: '💬',
-      title: 'Mensagens prontas no WhatsApp',
+      title: 'Cobranças automáticas pelo WhatsApp',
       description: 'Escolha o tom — amigável, profissional ou urgente — e envie em segundos. Sem improvisar, sem constrangimento.',
     },
     {
@@ -99,7 +99,7 @@ export default function LandingPage() {
     {
       number: '03',
       title: 'Envie no WhatsApp',
-      description: 'Abra a mensagem pronta direto no WhatsApp e acompanhe o status até o recebimento.',
+      description: 'Envie a cobrança pelo WhatsApp oficial da Lembrei e acompanhe o status pelo painel.',
     },
   ]
 
@@ -116,36 +116,53 @@ export default function LandingPage() {
   ]
 
   const pricingPlans = [
-    {
-      name: 'Essencial',
-      price: 'R$ 150',
-      period: '/mês',
-      description: 'Para equipes que estão começando a organizar cobranças.',
-      highlighted: false,
-      features: [
-        'Até 50 usuários cadastrados',
-        'Até 100 mensagens por mês',
-        'Painel de clientes e cobranças',
-        'Mensagens prontas para WhatsApp',
-        'Controle de status dos pagamentos',
-      ],
-    },
-    {
-      name: 'Ilimitado',
-      price: 'R$ 250',
-      period: '/mês',
-      description: 'Para quem quer escalar sem se preocupar com limites.',
-      highlighted: true,
-      badge: 'Mais completo',
-      features: [
-        'Usuários ilimitados',
-        'Mensagens ilimitadas',
-        'Painel de clientes e cobranças',
-        'Mensagens prontas para WhatsApp',
-        'Controle de status dos pagamentos',
-      ],
-    },
-  ]
+  {
+    name: 'Inicial',
+    price: 'R$ 99',
+    period: '/mês',
+    description: 'Para autônomos e pequenos negócios começando a automatizar cobranças.',
+    highlighted: false,
+    features: [
+      'Até 50 clientes cadastrados',
+      'Até 100 mensagens de cobrança por mês',
+      'Envio oficial pelo WhatsApp',
+      'Geração de Pix e link de pagamento',
+      'Dashboard financeiro completo',
+      'Mensagens extras por R$ 0,35 cada',
+    ],
+  },
+  {
+    name: 'Pro',
+    price: 'R$ 199',
+    period: '/mês',
+    description: 'Para quem já tem uma carteira maior de clientes e cobra com frequência.',
+    highlighted: true,
+    badge: 'Mais recomendado',
+    features: [
+      'Até 200 clientes cadastrados',
+      'Até 400 mensagens de cobrança por mês',
+      'Envio oficial pelo WhatsApp',
+      'Automações de lembrete',
+      'Geração de Pix e link de pagamento',
+      'Mensagens extras por R$ 0,30 cada',
+    ],
+  },
+  {
+    name: 'Scale',
+    price: 'R$ 299',
+    period: '/mês',
+    description: 'Para operações maiores que precisam cobrar muitos clientes todos os meses.',
+    highlighted: false,
+    features: [
+      'Até 500 clientes cadastrados',
+      'Até 1000 mensagens de cobrança por mês',
+      'Envio oficial pelo WhatsApp',
+      'Automações de lembrete',
+      'Dashboard financeiro completo',
+      'Mensagens extras por R$ 0,25 cada',
+    ],
+  },
+]
 
   return (
     <div className="landing-page">
@@ -1693,7 +1710,7 @@ export default function LandingPage() {
           <div className="section-head">
             <div className="section-label">Planos</div>
             <h2 className="section-title">Escolha o plano ideal para o seu momento</h2>
-            <p className="section-subtitle">Comece com limites claros ou vá direto para o uso ilimitado.</p>
+            <p className="section-subtitle">Comece com 10 mensagens grátis e escolha um plano quando estiver pronto para escalar..</p>
           </div>
 
           <div className="pricing-grid">

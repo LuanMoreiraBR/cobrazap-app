@@ -197,8 +197,8 @@ serve(async (req) => {
         paid_at: paidAt,
         payment_provider: charge.payment_provider || 'manual',
         payment_status: charge.payment_status || 'manual_paid',
-        payment_confirmation_sent_at: new Date().toISOString(),
-        payment_confirmation_provider: 'twilio',
+        payment_confirmation_sent_at: null,
+        payment_confirmation_provider: null,
       })
       .eq('id', charge.id)
       .eq('user_id', user_id)
@@ -227,27 +227,13 @@ serve(async (req) => {
 
     if (scheduledError) throw scheduledError
 
-    const client = Array.isArray(charge.client) ? charge.client[0] : charge.client
 
-    const to = formatWhatsAppTo(client?.phone)
-
-    const confirmationMessage = buildPaymentConfirmationMessage({
-      clientName: client?.name || 'cliente',
-      description: charge.description || 'cobrança',
-      amount: charge.amount || 0,
-    })
-
-    const twilioResult = await sendTwilioWhatsAppMessage({
-      to,
-      body: confirmationMessage,
-    })
-
-    return jsonResponse({
-      ok: true,
-      charge: updatedCharge,
-      confirmation_sent: !twilioResult.skipped,
-      twilio: twilioResult,
-    })
+  return jsonResponse({
+  ok: true,
+  charge: updatedCharge,
+  confirmation_sent: false,
+  confirmation_strategy: 'customer_replies_pago',
+})
   } catch (error) {
     console.error(error)
 

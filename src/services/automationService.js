@@ -58,7 +58,7 @@ Você poderá escolher Pix ou cartão de crédito:
 
 ${paymentUrl || 'Link de pagamento indisponível no momento.'}
 
-Após o pagamento, a baixa será identificada automaticamente.`
+Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
   }
 
   return `
@@ -70,7 +70,7 @@ ${pixQrCode || 'Pix indisponível no momento.'}
 ${paymentUrl ? `Link de pagamento:
 ${paymentUrl}
 
-` : ''}Após o pagamento, a baixa será identificada automaticamente.`
+` : ''}Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
 }
 
 export function buildAutomationMessage({

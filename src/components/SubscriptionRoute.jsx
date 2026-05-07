@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   getUserSubscription,
@@ -8,10 +7,8 @@ import {
 
 export default function SubscriptionRoute({ children }) {
   const { user } = useAuth()
-  const location = useLocation()
 
   const [loading, setLoading] = useState(true)
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false)
 
   useEffect(() => {
     async function checkSubscription() {
@@ -22,10 +19,15 @@ export default function SubscriptionRoute({ children }) {
 
       try {
         const subscription = await getUserSubscription(user.id)
-        setHasActiveSubscription(isSubscriptionActive(subscription))
+        const active = isSubscriptionActive(subscription)
+
+        console.log('Assinatura do usuário:', {
+          active,
+          subscription,
+          mode: active ? 'paid_plan' : 'free_trial',
+        })
       } catch (error) {
         console.error('Erro ao verificar assinatura:', error)
-        setHasActiveSubscription(false)
       } finally {
         setLoading(false)
       }
@@ -38,14 +40,10 @@ export default function SubscriptionRoute({ children }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-2xl bg-white px-6 py-5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
-          Verificando assinatura...
+          Carregando sua conta...
         </div>
       </div>
     )
-  }
-
-  if (!hasActiveSubscription) {
-    return <Navigate to="/planos" replace state={{ from: location }} />
   }
 
   return children

@@ -17,6 +17,32 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+function formatCurrencyBRL(amount: number | string | null | undefined) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(amount || 0))
+}
+
+
+function cleanDescription(description: string | null | undefined) {
+  return String(description || 'cobrança')
+    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
+    .trim()
+}
+
+function buildChargeTemplateVariables(charge: any) {
+  const client = Array.isArray(charge?.client) ? charge.client[0] : charge?.client
+
+  return {
+    '1': client?.name || 'cliente',
+    '2': cleanDescription(charge?.description),
+    '3': formatCurrencyBRL(charge?.amount),
+    '4': formatDateBR(charge?.due_date),
+    '5': charge?.payment_url || '',
+  }
+}
+
 function getEnv(name: string) {
   const value = Deno.env.get(name)
   if (!value) throw new Error(`Variável ${name} não configurada.`)
@@ -108,7 +134,7 @@ Vencimento: ${dueDate}
 
 ${paymentInstructions}
 
-Após o pagamento, a baixa será identificada automaticamente.`
+Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
   }
 
   return `Olá ${clientName}, tudo bem?
@@ -117,18 +143,122 @@ Passando para lembrar sobre a cobrança referente a "${description}", no valor d
 
 ${paymentInstructions}
 
-Após o pagamento, a baixa será identificada automaticamente.`
+Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
 }
 
-async function sendWithTwilio({ to, text }: { to: string; text: string }) {
+const FREE_TRIAL_MESSAGE_LIMIT = 10
+
+function getCurrentYearMonth() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(new Date())
+    .slice(0, 7)
+}
+
+async function canSendMessageForUser(supabase: any, userId: string) {
+  const yearMonth = getCurrentYearMonth()
+
+  const { data: subscription, error: subscriptionError } = await supabase
+    .from('user_subscriptions')
+    .select(`
+      *,
+      plan:platform_plans (*)
+    `)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (subscriptionError) throw subscriptionError
+
+  const hasActivePlan =
+    subscription?.status === 'active' &&
+    (!subscription.current_period_end ||
+      new Date(subscription.current_period_end) > new Date())
+
+  const maxMessages = hasActivePlan
+    ? Number(subscription.plan?.max_messages_per_month || 0)
+    : FREE_TRIAL_MESSAGE_LIMIT
+
+  if (!maxMessages) {
+    return {
+      allowed: true,
+      reason: 'Plano ilimitado.',
+    }
+  }
+
+  const { data: usage, error: usageError } = await supabase
+    .from('user_monthly_usage')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('year_month', yearMonth)
+    .maybeSingle()
+
+  if (usageError) throw usageError
+
+  const messagesSent = Number(usage?.messages_sent || 0)
+
+  if (messagesSent >= maxMessages) {
+    return {
+      allowed: false,
+      reason: hasActivePlan
+        ? `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`
+        : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens grátis. Escolha um plano para continuar enviando cobranças.`,
+    }
+  }
+
+  return {
+    allowed: true,
+    reason: 'Dentro do limite.',
+  }
+}
+
+async function incrementMessageUsage({
+  supabase,
+  userId,
+  chargeId,
+}: {
+  supabase: any
+  userId: string
+  chargeId: string
+}) {
+  const { error } = await supabase.rpc('register_message_usage_with_credits', {
+    p_user_id: userId,
+    p_source_table: 'charges',
+    p_source_id: chargeId,
+  })
+
+  if (error) {
+    console.error('Erro ao contabilizar uso mensal:', error)
+    throw error
+  }
+}
+
+async function sendWithTwilio({
+  to,
+  text,
+  contentVariables,
+}: {
+  to: string
+  text: string
+  contentVariables?: Record<string, string>
+}) {
   const accountSid = getEnv('TWILIO_ACCOUNT_SID')
   const authToken = getEnv('TWILIO_AUTH_TOKEN')
   const messagingServiceSid = getEnv('TWILIO_MESSAGING_SERVICE_SID')
+  const chargeTemplateSid = Deno.env.get('TWILIO_CHARGE_TEMPLATE_SID') || ''
 
   const body = new URLSearchParams()
   body.set('MessagingServiceSid', messagingServiceSid)
   body.set('To', to)
-  body.set('Body', text)
+
+  if (chargeTemplateSid && contentVariables) {
+    body.set('ContentSid', chargeTemplateSid)
+    body.set('ContentVariables', JSON.stringify(contentVariables))
+  } else {
+    body.set('Body', text)
+  }
 
   const auth = btoa(`${accountSid}:${authToken}`)
 
@@ -238,8 +368,31 @@ Deno.serve(async (req) => {
       )
     }
 
+    const permission = await canSendMessageForUser(supabase, user_id)
+
+if (!permission.allowed) {
+  return jsonResponse(
+    {
+      ok: false,
+      error: permission.reason,
+      billing_required: true,
+    },
+    402,
+  )
+}
+
     const message = buildChargeWhatsAppMessage(charge)
-    const twilioMessage = await sendWithTwilio({ to, text: message })
+    const twilioMessage = await sendWithTwilio({
+  to,
+  text: message,
+  contentVariables: buildChargeTemplateVariables(charge),
+})
+
+await incrementMessageUsage({
+  supabase,
+  userId: user_id,
+  chargeId: charge.id,
+})
 
     const { data: updatedCharge, error: updateError } = await supabase
       .from('charges')

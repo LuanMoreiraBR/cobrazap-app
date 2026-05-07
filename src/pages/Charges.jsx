@@ -555,8 +555,8 @@ export default function Charges() {
     )
 
     setSuccess(
-      'Cobrança marcada como paga. A confirmação foi enviada pelo WhatsApp e os lembretes pendentes foram cancelados.',
-    )
+  'Cobrança marcada como paga e lembretes pendentes foram cancelados. Se o cliente responder PAGO no WhatsApp, o robô confirmará a baixa.',
+)
   } catch (err) {
     setError(err.message || 'Erro ao atualizar cobrança')
   }
