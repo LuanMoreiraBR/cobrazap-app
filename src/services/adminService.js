@@ -87,3 +87,40 @@ export async function getAdminUserDetail(userId) {
 
   return data
 }
+
+export async function getAdminEventLogs({
+  provider = 'all',
+  status = 'all',
+  range = '7d',
+  search = '',
+  limit = 100,
+} = {}) {
+  const { data, error } = await supabase.functions.invoke('admin-event-logs', {
+    body: {
+      provider,
+      status,
+      range,
+      search,
+      limit,
+    },
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao carregar logs.')
+      } catch {
+        throw new Error(error.message || 'Erro ao carregar logs.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao carregar logs.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao carregar logs.')
+  }
+
+  return data
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AdminUserActionModal from '../components/AdminUserActionModal'
+
 import {
   Activity,
   AlertTriangle,
@@ -16,8 +17,13 @@ import {
   UserCheck,
   Users,
   Wallet,
+  FileText,
 } from 'lucide-react'
-import { getAdminDashboard, runAdminUserAction } from '../services/adminService'
+import {
+  getAdminDashboard,
+  getAdminEventLogs,
+  runAdminUserAction,
+} from '../services/adminService'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency } from '../utils/format'
 
@@ -46,6 +52,11 @@ const ADMIN_SECTIONS = [
     id: 'history',
     label: 'Histórico admin',
     icon: History,
+  },
+  {
+    id: 'logs',
+    label: 'Logs',
+    icon: FileText,
   },
 ]
 
@@ -220,6 +231,25 @@ function getActionLabel(action) {
   return labels[action] || action
 }
 
+function formatLogDate(value) {
+  if (!value) return '-'
+  return new Date(value).toLocaleString('pt-BR')
+}
+
+function getLogStatusTone(status) {
+  if (status === 'success') return 'green'
+  if (status === 'error') return 'red'
+  if (status === 'ignored') return 'amber'
+  if (status === 'info') return 'blue'
+  return 'slate'
+}
+
+function getProviderLabel(provider) {
+  if (provider === 'twilio') return 'Twilio'
+  if (provider === 'mercado_pago') return 'Mercado Pago'
+  return provider || '-'
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const { signOut } = useAuth()
@@ -236,6 +266,15 @@ export default function AdminDashboard() {
   const [planFilter, setPlanFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [specialFilter, setSpecialFilter] = useState('all')
+
+  const [logsData, setLogsData] = useState(null)
+  const [logsLoading, setLogsLoading] = useState(false)
+  const [logsError, setLogsError] = useState('')
+
+  const [logProviderFilter, setLogProviderFilter] = useState('all')
+  const [logStatusFilter, setLogStatusFilter] = useState('all')
+  const [logRangeFilter, setLogRangeFilter] = useState('7d')
+  const [logSearchTerm, setLogSearchTerm] = useState('')
 
   async function handleLogout() {
     await signOut()
@@ -257,8 +296,37 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    load()
-  }, [])
+  load()
+}, [])
+
+async function loadLogs(overrides = {}) {
+  setLogsError('')
+  setLogsLoading(true)
+
+  const filters = {
+    provider: logProviderFilter,
+    status: logStatusFilter,
+    range: logRangeFilter,
+    search: logSearchTerm,
+    limit: 100,
+    ...overrides,
+  }
+
+  try {
+    const result = await getAdminEventLogs(filters)
+    setLogsData(result)
+  } catch (err) {
+    setLogsError(err.message || 'Erro ao carregar logs.')
+  } finally {
+    setLogsLoading(false)
+  }
+}
+
+useEffect(() => {
+  if (activeSection === 'logs') {
+    loadLogs()
+  }
+}, [activeSection])
 
   function openActionModal(user) {
   setSelectedActionUser(user)
@@ -987,6 +1055,275 @@ async function runUserAction(payload) {
             </div>
           ) : null}
         </div>
+
+        {activeSection === 'logs' ? (
+  <div className="space-y-4">
+    <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <h2 className="text-xl font-black text-[#070D2D]">
+            Logs da plataforma
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Eventos de Twilio, Mercado Pago, erros, ignorados e sucessos.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <select
+            value={logProviderFilter}
+            onChange={(e) => {
+              setLogProviderFilter(e.target.value)
+              loadLogs({ provider: e.target.value })
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-[#5B4BFF]"
+          >
+            <option value="all">Todos provedores</option>
+            <option value="twilio">Twilio</option>
+            <option value="mercado_pago">Mercado Pago</option>
+          </select>
+
+          <select
+            value={logStatusFilter}
+            onChange={(e) => {
+              setLogStatusFilter(e.target.value)
+              loadLogs({ status: e.target.value })
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-[#5B4BFF]"
+          >
+            <option value="all">Todos status</option>
+            <option value="success">Success</option>
+            <option value="error">Error</option>
+            <option value="ignored">Ignored</option>
+            <option value="info">Info</option>
+          </select>
+
+          <select
+            value={logRangeFilter}
+            onChange={(e) => {
+              setLogRangeFilter(e.target.value)
+              loadLogs({ range: e.target.value })
+            }}
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-[#5B4BFF]"
+          >
+            <option value="24h">Últimas 24h</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+          </select>
+
+          <label className="relative">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+
+            <input
+              value={logSearchTerm}
+              onChange={(e) => setLogSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  loadLogs({ search: logSearchTerm })
+                }
+              }}
+              placeholder="Buscar erro/mensagem"
+              className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold outline-none focus:border-[#5B4BFF] focus:ring-4 focus:ring-[#5B4BFF]/10"
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => loadLogs({ search: logSearchTerm })}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#5B4BFF] px-4 py-3 text-sm font-black text-white hover:bg-[#4A3BE8]"
+          >
+            <RefreshCw size={16} />
+            Buscar
+          </button>
+        </div>
+      </div>
+
+      {logsError ? (
+        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+          {logsError}
+        </div>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <AdminCard
+          title="Total"
+          value={logsData?.summary?.total || 0}
+          subtitle="Eventos filtrados"
+          icon={FileText}
+        />
+
+        <AdminCard
+          title="Success"
+          value={logsData?.summary?.success || 0}
+          subtitle="Eventos concluídos"
+          icon={FileText}
+          tone="green"
+        />
+
+        <AdminCard
+          title="Error"
+          value={logsData?.summary?.error || 0}
+          subtitle="Eventos com falha"
+          icon={AlertTriangle}
+          tone="red"
+        />
+
+        <AdminCard
+          title="Ignored"
+          value={logsData?.summary?.ignored || 0}
+          subtitle="Eventos ignorados"
+          icon={AlertTriangle}
+          tone="amber"
+        />
+
+        <AdminCard
+          title="Twilio"
+          value={logsData?.summary?.twilio || 0}
+          subtitle="Eventos WhatsApp"
+          icon={MessageCircle}
+          tone="blue"
+        />
+
+        <AdminCard
+          title="Mercado Pago"
+          value={logsData?.summary?.mercado_pago || 0}
+          subtitle="Eventos pagamento"
+          icon={CreditCard}
+          tone="purple"
+        />
+      </div>
+    </div>
+
+    <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-black text-[#070D2D]">
+            Eventos recentes
+          </h3>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Resultado dos filtros selecionados.
+          </p>
+        </div>
+
+        {logsLoading ? (
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">
+            Carregando...
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[1200px] text-left text-sm">
+          <thead>
+            <tr className="border-b text-xs uppercase tracking-wide text-slate-400">
+              <th className="py-3">Data</th>
+              <th className="py-3">Provider</th>
+              <th className="py-3">Status</th>
+              <th className="py-3">Evento</th>
+              <th className="py-3">Usuário</th>
+              <th className="py-3">Mensagem</th>
+              <th className="py-3">Erro</th>
+              <th className="py-3">Relacionado</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {logsLoading && !logsData ? (
+              <tr>
+                <td colSpan="8" className="py-5 text-slate-500">
+                  Carregando logs...
+                </td>
+              </tr>
+            ) : null}
+
+            {!logsLoading && (logsData?.logs || []).length === 0 ? (
+              <tr>
+                <td colSpan="8" className="py-5 text-slate-500">
+                  Nenhum log encontrado com os filtros atuais.
+                </td>
+              </tr>
+            ) : null}
+
+            {(logsData?.logs || []).map((log) => (
+              <tr key={log.id} className="border-b align-top last:border-0">
+                <td className="py-3 text-xs text-slate-500">
+                  {formatLogDate(log.created_at)}
+                </td>
+
+                <td className="py-3">
+                  <StatusPill tone="purple">
+                    {getProviderLabel(log.provider)}
+                  </StatusPill>
+                </td>
+
+                <td className="py-3">
+                  <StatusPill tone={getLogStatusTone(log.status)}>
+                    {log.status}
+                  </StatusPill>
+                </td>
+
+                <td className="py-3">
+                  <p className="font-bold text-[#070D2D]">{log.event_type}</p>
+                </td>
+
+                <td className="py-3">
+                  {log.user_id ? (
+                    <div>
+                      <p className="font-bold text-[#070D2D]">
+                        {log.user_name || 'Sem nome'}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {log.user_email || log.user_id}
+                      </p>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+
+                <td className="py-3">
+                  <p className="max-w-xs whitespace-pre-wrap text-slate-600">
+                    {log.message || '-'}
+                  </p>
+                </td>
+
+                <td className="py-3">
+                  {log.error_message ? (
+                    <p className="max-w-xs whitespace-pre-wrap rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700">
+                      {log.error_message}
+                    </p>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+
+                <td className="py-3">
+                  {log.related_table || log.related_id ? (
+                    <div>
+                      <p className="font-bold text-[#070D2D]">
+                        {log.related_table || '-'}
+                      </p>
+                      <p className="max-w-[180px] truncate text-xs text-slate-500">
+                        {log.related_id || '-'}
+                      </p>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+) : null}
 
                 <AdminUserActionModal
           open={actionModalOpen}

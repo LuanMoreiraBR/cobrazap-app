@@ -12,44 +12,6 @@ const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 18
 const FREE_TRIAL_MESSAGE_LIMIT = 10
 
-function formatCurrencyBRL(amount: number | string | null | undefined) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(Number(amount || 0))
-}
-
-function formatDateBR(dateString: string | null | undefined) {
-  if (!dateString) return '-'
-
-  const date = new Date(`${dateString}T00:00:00`)
-  return new Intl.DateTimeFormat('pt-BR').format(date)
-}
-
-function cleanDescription(description: string | null | undefined) {
-  return String(description || 'cobrança')
-    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
-    .trim()
-}
-
-function buildChargeTemplateVariables(message: any) {
-  const charge = Array.isArray(message?.charge)
-    ? message.charge[0]
-    : message?.charge
-
-  const client = Array.isArray(message?.client)
-    ? message.client[0]
-    : message?.client
-
-  return {
-    '1': client?.name || 'cliente',
-    '2': cleanDescription(charge?.description),
-    '3': formatCurrencyBRL(charge?.amount),
-    '4': formatDateBR(charge?.due_date),
-    '5': charge?.payment_url || '',
-  }
-}
-
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -95,6 +57,44 @@ function formatBrazilWhatsApp(phone: string | null | undefined) {
   }
 
   return `whatsapp:+55${digits}`
+}
+
+function formatCurrencyBRL(amount: number | string | null | undefined) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(amount || 0))
+}
+
+function formatDateBR(dateString: string | null | undefined) {
+  if (!dateString) return '-'
+
+  const date = new Date(`${dateString}T00:00:00`)
+  return new Intl.DateTimeFormat('pt-BR').format(date)
+}
+
+function cleanDescription(description: string | null | undefined) {
+  return String(description || 'cobrança')
+    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
+    .trim()
+}
+
+function buildChargeTemplateVariables(message: any) {
+  const charge = Array.isArray(message?.charge)
+    ? message.charge[0]
+    : message?.charge
+
+  const client = Array.isArray(message?.client)
+    ? message.client[0]
+    : message?.client
+
+  return {
+    '1': client?.name || 'cliente',
+    '2': cleanDescription(charge?.description),
+    '3': formatCurrencyBRL(charge?.amount),
+    '4': formatDateBR(charge?.due_date),
+    '5': charge?.payment_url || '',
+  }
 }
 
 function getCurrentYearMonth() {
@@ -152,6 +152,67 @@ function getBrazilBusinessTime() {
   }
 }
 
+async function logPlatformEvent({
+  supabase,
+  provider,
+  eventType,
+  userId = null,
+  relatedTable = null,
+  relatedId = null,
+  status = 'info',
+  message = '',
+  requestPayload = {},
+  responsePayload = {},
+  errorMessage = null,
+}: {
+  supabase: any
+  provider: string
+  eventType: string
+  userId?: string | null
+  relatedTable?: string | null
+  relatedId?: string | null
+  status?: string
+  message?: string
+  requestPayload?: Record<string, unknown>
+  responsePayload?: Record<string, unknown>
+  errorMessage?: string | null
+}) {
+  try {
+    if (!supabase) return
+
+    await supabase.from('platform_event_logs').insert({
+      provider,
+      event_type: eventType,
+      user_id: userId,
+      related_table: relatedTable,
+      related_id: relatedId,
+      status,
+      message,
+      request_payload: requestPayload,
+      response_payload: responsePayload,
+      error_message: errorMessage,
+    })
+  } catch (error) {
+    console.error('Erro ao gravar platform_event_logs:', error)
+  }
+}
+
+async function getExtraMessageCredits(supabase: any, userId: string) {
+  const { data, error } = await supabase
+    .from('message_credit_purchases')
+    .select('remaining')
+    .eq('user_id', userId)
+    .eq('status', 'paid')
+    .gt('remaining', 0)
+
+  if (error) throw error
+
+  return (data || []).reduce(
+    (total: number, item: any) => total + Number(item.remaining || 0),
+    0,
+  )
+}
+
 async function canSendMessageForUser(supabase: any, userId: string) {
   const yearMonth = getCurrentYearMonth()
 
@@ -171,16 +232,22 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     (!subscription.current_period_end ||
       new Date(subscription.current_period_end) > new Date())
 
-  const maxMessages = hasActivePlan
+  const baseMessageLimit = hasActivePlan
     ? Number(subscription.plan?.max_messages_per_month || 0)
     : FREE_TRIAL_MESSAGE_LIMIT
 
-  if (!maxMessages) {
+  if (!baseMessageLimit) {
     return {
       allowed: true,
       reason: 'Plano ilimitado.',
     }
   }
+
+  const extraCredits = hasActivePlan
+    ? await getExtraMessageCredits(supabase, userId)
+    : 0
+
+  const totalMessageLimit = baseMessageLimit + extraCredits
 
   const { data: usage, error: usageError } = await supabase
     .from('user_monthly_usage')
@@ -193,11 +260,11 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 
   const messagesSent = Number(usage?.messages_sent || 0)
 
-  if (messagesSent >= maxMessages) {
+  if (messagesSent >= totalMessageLimit) {
     return {
       allowed: false,
       reason: hasActivePlan
-        ? `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`
+        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}.`
         : `Usuário usou as ${FREE_TRIAL_MESSAGE_LIMIT} mensagens grátis.`,
     }
   }
@@ -218,10 +285,10 @@ async function incrementMessageUsage({
   messageId: string
 }) {
   const { error } = await supabase.rpc('register_message_usage_with_credits', {
-  p_user_id: userId,
-  p_source_table: 'scheduled_messages',
-  p_source_id: messageId,
-})
+    p_user_id: userId,
+    p_source_table: 'scheduled_messages',
+    p_source_id: messageId,
+  })
 
   if (error) {
     console.error('Erro ao contabilizar uso mensal:', error)
@@ -292,30 +359,43 @@ Deno.serve(async (req) => {
     )
   }
 
-  const businessTime = getBrazilBusinessTime()
-
-  if (!businessTime.canSend) {
-    return jsonResponse({
-      ok: true,
-      skipped: true,
-      reason:
-        'Fora do horário permitido. Envio permitido somente de segunda a sexta, das 08:00 às 18:00, horário de Brasília.',
-      business_time: businessTime,
-    })
-  }
-
-  const supabase = createClient(
-    getEnv('SUPABASE_URL'),
-    getEnv('SUPABASE_SERVICE_ROLE_KEY'),
-  )
-
-  const nowIso = new Date().toISOString()
-  const batchLimit = getBatchLimit()
-  const maxAttempts = getMaxAttempts()
-
+  let supabase: any = null
   const results: Array<Record<string, unknown>> = []
 
   try {
+    const businessTime = getBrazilBusinessTime()
+
+    supabase = createClient(
+      getEnv('SUPABASE_URL'),
+      getEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    )
+
+    if (!businessTime.canSend) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'scheduled_whatsapp_batch_skipped',
+        status: 'ignored',
+        message:
+          'Fora do horário permitido. Envio permitido somente de segunda a sexta, das 08:00 às 18:00.',
+        requestPayload: {
+          business_time: businessTime,
+        },
+      })
+
+      return jsonResponse({
+        ok: true,
+        skipped: true,
+        reason:
+          'Fora do horário permitido. Envio permitido somente de segunda a sexta, das 08:00 às 18:00, horário de Brasília.',
+        business_time: businessTime,
+      })
+    }
+
+    const nowIso = new Date().toISOString()
+    const batchLimit = getBatchLimit()
+    const maxAttempts = getMaxAttempts()
+
     const staleProcessingDate = new Date(
       Date.now() - 15 * 60 * 1000,
     ).toISOString()
@@ -358,6 +438,20 @@ Deno.serve(async (req) => {
       .limit(batchLimit)
 
     if (error) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'scheduled_whatsapp_batch_failed',
+        status: 'error',
+        message: 'Erro ao buscar mensagens agendadas.',
+        requestPayload: {
+          batch_limit: batchLimit,
+          max_attempts: maxAttempts,
+          business_time: businessTime,
+        },
+        errorMessage: error.message,
+      })
+
       return jsonResponse(
         {
           ok: false,
@@ -366,6 +460,20 @@ Deno.serve(async (req) => {
         500,
       )
     }
+
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'scheduled_whatsapp_batch_started',
+      status: 'info',
+      message: 'Processamento de mensagens agendadas iniciado.',
+      requestPayload: {
+        batch_limit: batchLimit,
+        max_attempts: maxAttempts,
+        found: messages?.length || 0,
+        business_time: businessTime,
+      },
+    })
 
     for (const message of messages || []) {
       const currentAttempts = Number(message.attempts || 0)
@@ -378,6 +486,7 @@ Deno.serve(async (req) => {
               status: 'failed',
               error_message: `Limite de tentativas atingido: ${maxAttempts}.`,
               last_attempt_at: new Date().toISOString(),
+              processing_started_at: null,
             })
             .eq('id', message.id)
             .eq('status', 'pending')
@@ -387,6 +496,23 @@ Deno.serve(async (req) => {
             user_id: message.user_id,
             status: 'failed',
             reason: `Limite de tentativas atingido: ${maxAttempts}.`,
+          })
+
+          await logPlatformEvent({
+            supabase,
+            provider: 'twilio',
+            eventType: 'scheduled_whatsapp_failed',
+            userId: message.user_id,
+            relatedTable: 'scheduled_messages',
+            relatedId: message.id,
+            status: 'error',
+            message: `Limite de tentativas atingido: ${maxAttempts}.`,
+            requestPayload: {
+              message_id: message.id,
+              charge_id: message.charge_id,
+              attempts: currentAttempts,
+              max_attempts: maxAttempts,
+            },
           })
 
           continue
@@ -417,6 +543,22 @@ Deno.serve(async (req) => {
             reason: 'Mensagem já estava sendo processada por outra execução.',
           })
 
+          await logPlatformEvent({
+            supabase,
+            provider: 'twilio',
+            eventType: 'scheduled_whatsapp_skipped',
+            userId: message.user_id,
+            relatedTable: 'scheduled_messages',
+            relatedId: message.id,
+            status: 'ignored',
+            message: 'Mensagem já estava sendo processada por outra execução.',
+            requestPayload: {
+              message_id: message.id,
+              charge_id: message.charge_id,
+              client_id: message.client_id,
+            },
+          })
+
           continue
         }
 
@@ -437,6 +579,21 @@ Deno.serve(async (req) => {
             charge_id: message.charge_id,
             status: 'cancelled',
             reason: 'Cobrança já paga.',
+          })
+
+          await logPlatformEvent({
+            supabase,
+            provider: 'twilio',
+            eventType: 'scheduled_whatsapp_cancelled',
+            userId: message.user_id,
+            relatedTable: 'scheduled_messages',
+            relatedId: message.id,
+            status: 'ignored',
+            message: 'Mensagem cancelada porque a cobrança já estava paga.',
+            requestPayload: {
+              message_id: message.id,
+              charge_id: message.charge_id,
+            },
           })
 
           continue
@@ -462,6 +619,22 @@ Deno.serve(async (req) => {
             client_id: message.client_id,
             status: 'failed',
             error: permission.reason,
+          })
+
+          await logPlatformEvent({
+            supabase,
+            provider: 'twilio',
+            eventType: 'scheduled_whatsapp_blocked_by_billing',
+            userId: message.user_id,
+            relatedTable: 'scheduled_messages',
+            relatedId: message.id,
+            status: 'ignored',
+            message: permission.reason,
+            requestPayload: {
+              message_id: message.id,
+              charge_id: message.charge_id,
+              client_id: message.client_id,
+            },
           })
 
           continue
@@ -509,6 +682,27 @@ Deno.serve(async (req) => {
           provider: 'twilio',
           provider_message_id: twilioResult.sid,
         })
+
+        await logPlatformEvent({
+          supabase,
+          provider: 'twilio',
+          eventType: 'scheduled_whatsapp_sent',
+          userId: message.user_id,
+          relatedTable: 'scheduled_messages',
+          relatedId: message.id,
+          status: 'success',
+          message: 'Mensagem agendada enviada com sucesso.',
+          requestPayload: {
+            message_id: message.id,
+            charge_id: message.charge_id,
+            client_id: message.client_id,
+            to,
+          },
+          responsePayload: {
+            sid: twilioResult.sid,
+            status: twilioResult.status || null,
+          },
+        })
       } catch (err) {
         const errorMessage = getErrorMessage(err)
 
@@ -530,6 +724,23 @@ Deno.serve(async (req) => {
           status: 'failed',
           error: errorMessage,
         })
+
+        await logPlatformEvent({
+          supabase,
+          provider: 'twilio',
+          eventType: 'scheduled_whatsapp_failed',
+          userId: message.user_id,
+          relatedTable: 'scheduled_messages',
+          relatedId: message.id,
+          status: 'error',
+          message: 'Falha ao enviar mensagem agendada.',
+          requestPayload: {
+            message_id: message.id,
+            charge_id: message.charge_id,
+            client_id: message.client_id,
+          },
+          errorMessage,
+        })
       }
     }
 
@@ -547,10 +758,21 @@ Deno.serve(async (req) => {
       results,
     })
   } catch (err) {
+    const errorMessage = getErrorMessage(err)
+
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'scheduled_whatsapp_batch_failed',
+      status: 'error',
+      message: 'Erro geral ao processar mensagens agendadas.',
+      errorMessage,
+    })
+
     return jsonResponse(
       {
         ok: false,
-        error: getErrorMessage(err),
+        error: errorMessage,
       },
       500,
     )

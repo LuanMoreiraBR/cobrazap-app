@@ -24,7 +24,6 @@ function formatCurrencyBRL(amount: number | string | null | undefined) {
   }).format(Number(amount || 0))
 }
 
-
 function cleanDescription(description: string | null | undefined) {
   return String(description || 'cobrança')
     .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
@@ -156,6 +155,51 @@ function getCurrentYearMonth() {
   })
     .format(new Date())
     .slice(0, 7)
+}
+
+async function logPlatformEvent({
+  supabase,
+  provider,
+  eventType,
+  userId = null,
+  relatedTable = null,
+  relatedId = null,
+  status = 'info',
+  message = '',
+  requestPayload = {},
+  responsePayload = {},
+  errorMessage = null,
+}: {
+  supabase: any
+  provider: string
+  eventType: string
+  userId?: string | null
+  relatedTable?: string | null
+  relatedId?: string | null
+  status?: string
+  message?: string
+  requestPayload?: Record<string, unknown>
+  responsePayload?: Record<string, unknown>
+  errorMessage?: string | null
+}) {
+  try {
+    if (!supabase) return
+
+    await supabase.from('platform_event_logs').insert({
+      provider,
+      event_type: eventType,
+      user_id: userId,
+      related_table: relatedTable,
+      related_id: relatedId,
+      status,
+      message,
+      request_payload: requestPayload,
+      response_payload: responsePayload,
+      error_message: errorMessage,
+    })
+  } catch (error) {
+    console.error('Erro ao gravar platform_event_logs:', error)
+  }
 }
 
 async function canSendMessageForUser(supabase: any, userId: string) {
@@ -292,8 +336,18 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Método não permitido.' }, 405)
   }
 
+  let supabase: any = null
+  let payload: any = {}
+  let logUserId: string | null = null
+  let logChargeId: string | null = null
+
   try {
-    const { charge_id, user_id } = await req.json()
+    payload = await req.json()
+
+    const { charge_id, user_id } = payload
+
+    logUserId = user_id || null
+    logChargeId = charge_id || null
 
     if (!charge_id || !user_id) {
       return jsonResponse(
@@ -308,7 +362,19 @@ Deno.serve(async (req) => {
     const supabaseUrl = getEnv('SUPABASE_URL')
     const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY')
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    supabase = createClient(supabaseUrl, serviceRoleKey)
+
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'manual_whatsapp_charge_requested',
+      userId: user_id,
+      relatedTable: 'charges',
+      relatedId: charge_id,
+      status: 'info',
+      message: 'Solicitação de envio manual de cobrança por WhatsApp.',
+      requestPayload: payload,
+    })
 
     const { data: charge, error: chargeError } = await supabase
       .from('charges')
@@ -327,6 +393,19 @@ Deno.serve(async (req) => {
       .single()
 
     if (chargeError || !charge) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'manual_whatsapp_charge_failed',
+        userId: user_id,
+        relatedTable: 'charges',
+        relatedId: charge_id,
+        status: 'error',
+        message: 'Cobrança não encontrada para envio manual.',
+        requestPayload: payload,
+        errorMessage: chargeError?.message || 'Cobrança não encontrada.',
+      })
+
       return jsonResponse(
         {
           ok: false,
@@ -337,6 +416,18 @@ Deno.serve(async (req) => {
     }
 
     if (charge.status === 'pago') {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'manual_whatsapp_charge_ignored',
+        userId: user_id,
+        relatedTable: 'charges',
+        relatedId: charge_id,
+        status: 'ignored',
+        message: 'Cobrança já estava paga. Envio manual ignorado.',
+        requestPayload: payload,
+      })
+
       return jsonResponse(
         {
           ok: false,
@@ -349,6 +440,18 @@ Deno.serve(async (req) => {
     const to = formatWhatsAppTo(charge?.client?.phone)
 
     if (!to) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'manual_whatsapp_charge_failed',
+        userId: user_id,
+        relatedTable: 'charges',
+        relatedId: charge_id,
+        status: 'error',
+        message: 'Cliente sem telefone válido.',
+        requestPayload: payload,
+      })
+
       return jsonResponse(
         {
           ok: false,
@@ -359,6 +462,18 @@ Deno.serve(async (req) => {
     }
 
     if (!charge.pix_qr_code && !charge.payment_url) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'manual_whatsapp_charge_failed',
+        userId: user_id,
+        relatedTable: 'charges',
+        relatedId: charge_id,
+        status: 'error',
+        message: 'Cobrança sem Pix ou link de pagamento.',
+        requestPayload: payload,
+      })
+
       return jsonResponse(
         {
           ok: false,
@@ -370,29 +485,70 @@ Deno.serve(async (req) => {
 
     const permission = await canSendMessageForUser(supabase, user_id)
 
-if (!permission.allowed) {
-  return jsonResponse(
-    {
-      ok: false,
-      error: permission.reason,
-      billing_required: true,
-    },
-    402,
-  )
-}
+    if (!permission.allowed) {
+      await logPlatformEvent({
+        supabase,
+        provider: 'twilio',
+        eventType: 'manual_whatsapp_charge_blocked_by_billing',
+        userId: user_id,
+        relatedTable: 'charges',
+        relatedId: charge_id,
+        status: 'ignored',
+        message: permission.reason,
+        requestPayload: payload,
+      })
+
+      return jsonResponse(
+        {
+          ok: false,
+          error: permission.reason,
+          billing_required: true,
+        },
+        402,
+      )
+    }
 
     const message = buildChargeWhatsAppMessage(charge)
-    const twilioMessage = await sendWithTwilio({
-  to,
-  text: message,
-  contentVariables: buildChargeTemplateVariables(charge),
-})
 
-await incrementMessageUsage({
-  supabase,
-  userId: user_id,
-  chargeId: charge.id,
-})
+    const twilioMessage = await sendWithTwilio({
+      to,
+      text: message,
+      contentVariables: buildChargeTemplateVariables(charge),
+    })
+
+    let usageIncrementError: string | null = null
+
+try {
+  await incrementMessageUsage({
+    supabase,
+    userId: user_id,
+    chargeId: charge.id,
+  })
+} catch (usageError) {
+  usageIncrementError =
+    usageError instanceof Error
+      ? usageError.message
+      : 'Erro ao contabilizar uso da mensagem.'
+
+  console.error('Mensagem enviada, mas houve erro ao contabilizar uso:', usageError)
+
+  await logPlatformEvent({
+    supabase,
+    provider: 'twilio',
+    eventType: 'manual_whatsapp_usage_increment_failed',
+    userId: user_id,
+    relatedTable: 'charges',
+    relatedId: charge.id,
+    status: 'error',
+    message:
+      'Mensagem enviada pela Twilio, mas houve erro ao contabilizar uso mensal.',
+    requestPayload: {
+      charge_id,
+      user_id,
+    },
+    errorMessage: usageIncrementError,
+  })
+}
 
     const { data: updatedCharge, error: updateError } = await supabase
       .from('charges')
@@ -419,22 +575,60 @@ await incrementMessageUsage({
       console.error('Erro ao atualizar status WhatsApp:', updateError)
     }
 
-    return jsonResponse({
-      ok: true,
-      message_sid: twilioMessage.sid,
-      status: twilioMessage.status,
-      charge: updatedCharge || charge,
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'manual_whatsapp_charge_sent',
+      userId: user_id,
+      relatedTable: 'charges',
+      relatedId: charge.id,
+      status: 'success',
+      message: 'Cobrança enviada manualmente por WhatsApp.',
+      requestPayload: {
+        charge_id,
+        user_id,
+        to,
+      },
+      responsePayload: {
+  sid: twilioMessage.sid,
+  status: twilioMessage.status,
+  update_error: updateError?.message || null,
+  usage_increment_error: usageIncrementError,
+},
     })
+
+    return jsonResponse({
+  ok: true,
+  message_sid: twilioMessage.sid,
+  status: twilioMessage.status,
+  usage_increment_error: usageIncrementError,
+  charge: updatedCharge || charge,
+})
   } catch (error) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : 'Erro ao enviar cobrança por WhatsApp.'
+
     console.error('Erro ao enviar cobrança por WhatsApp:', error)
+
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'manual_whatsapp_charge_failed',
+      userId: logUserId,
+      relatedTable: logChargeId ? 'charges' : null,
+      relatedId: logChargeId,
+      status: 'error',
+      message: 'Erro inesperado ao enviar cobrança manual por WhatsApp.',
+      requestPayload: payload,
+      errorMessage,
+    })
 
     return jsonResponse(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Erro ao enviar cobrança por WhatsApp.',
+        error: errorMessage,
       },
       500,
     )
