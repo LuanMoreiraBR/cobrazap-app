@@ -36,3 +36,27 @@ export async function isPlatformAdmin(userId) {
 
   return data
 }
+export async function runAdminUserAction(payload) {
+  const { data, error } = await supabase.functions.invoke('admin-user-action', {
+    body: payload,
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao executar ação admin.')
+      } catch {
+        throw new Error(error.message || 'Erro ao executar ação admin.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao executar ação admin.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao executar ação admin.')
+  }
+
+  return data
+}

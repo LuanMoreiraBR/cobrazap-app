@@ -241,18 +241,19 @@ serve(async (req) => {
     const onlineCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString()
 
     const [
-      profilesResult,
-      subscriptionsResult,
-      activityResult,
-      usageEventsResult,
-      monthlyUsageResult,
-      creditPurchasesResult,
-      platformPaymentsResult,
-      clientsResult,
-      chargesResult,
-      scheduledMessagesResult,
-      twilioBalance,
-    ] = await Promise.all([
+  profilesResult,
+  subscriptionsResult,
+  activityResult,
+  usageEventsResult,
+  monthlyUsageResult,
+  creditPurchasesResult,
+  platformPaymentsResult,
+  clientsResult,
+  chargesResult,
+  scheduledMessagesResult,
+  adminActionsResult,
+  twilioBalance,
+] = await Promise.all([
       supabase
         .from('app_user_profiles')
         .select('*')
@@ -303,6 +304,12 @@ serve(async (req) => {
         .from('scheduled_messages')
         .select('id, user_id, status, error_message, created_at, scheduled_for, sent_at'),
 
+        supabase
+        .from('platform_admin_actions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100),
+
       getTwilioBalance(),
     ])
 
@@ -316,7 +323,7 @@ serve(async (req) => {
     if (clientsResult.error) throw clientsResult.error
     if (chargesResult.error) throw chargesResult.error
     if (scheduledMessagesResult.error) throw scheduledMessagesResult.error
-
+    if (adminActionsResult.error) throw adminActionsResult.error
     const profiles = profilesResult.data || []
     const subscriptions = subscriptionsResult.data || []
     const online = activityResult.data || []
@@ -327,6 +334,7 @@ serve(async (req) => {
     const clients = clientsResult.data || []
     const charges = chargesResult.data || []
     const scheduledMessages = scheduledMessagesResult.data || []
+    const adminActions = adminActionsResult.data || []
 
     const subscriptionByUserId = new Map(
       subscriptions.map((item: any) => [item.user_id, item]),
@@ -535,27 +543,35 @@ serve(async (req) => {
         messagesUsed >= totalMessageLimit
 
       return {
-        user_id: profile.user_id,
-        email: profile.email,
-        name: profile.name,
-        created_at: profile.created_at,
-        plan: active ? plan?.name || 'Plano ativo' : 'Teste grátis',
-        subscription_status: active
-          ? 'active'
-          : subscription?.status || 'trial',
-        clients_count: userClients.length,
-        client_limit: clientLimit,
-        charges_count: userCharges.length,
-        messages_used: messagesUsed,
-        message_limit: totalMessageLimit,
-        extra_credits: extraCredits,
-        received_amount: receivedAmount,
-        open_amount: openAmount,
-        last_seen_at: activity?.last_seen_at || null,
-        last_route: activity?.route || null,
-        near_limit: nearLimit,
-        at_limit: atLimit,
-      }
+  user_id: profile.user_id,
+  email: profile.email,
+  name: profile.name,
+  created_at: profile.created_at,
+
+  is_blocked: Boolean(profile.is_blocked),
+  blocked_reason: profile.blocked_reason || null,
+  blocked_at: profile.blocked_at || null,
+
+  plan: active ? plan?.name || 'Plano ativo' : 'Teste grátis',
+  subscription_status: profile.is_blocked
+    ? 'blocked'
+    : active
+      ? 'active'
+      : subscription?.status || 'trial',
+
+  clients_count: userClients.length,
+  client_limit: clientLimit,
+  charges_count: userCharges.length,
+  messages_used: messagesUsed,
+  message_limit: totalMessageLimit,
+  extra_credits: extraCredits,
+  received_amount: receivedAmount,
+  open_amount: openAmount,
+  last_seen_at: activity?.last_seen_at || null,
+  last_route: activity?.route || null,
+  near_limit: nearLimit,
+  at_limit: atLimit,
+}
     })
 
     const usersNearLimit = usersDetailed.filter((item: any) => item.near_limit)
@@ -681,7 +697,25 @@ serve(async (req) => {
           user_name: profile?.name || 'Sem nome',
           user_email: profile?.email || '',
         }
+
+        
       }),
+
+      admin_actions: adminActions.map((action: any) => {
+  const adminProfile = profileByUserId.get(action.admin_user_id)
+  const targetProfile = action.target_user_id
+    ? profileByUserId.get(action.target_user_id)
+    : null
+
+  return {
+    ...action,
+    admin_name: adminProfile?.name || 'Admin',
+    admin_email: adminProfile?.email || '',
+    target_name: targetProfile?.name || 'Sem usuário',
+    target_email: targetProfile?.email || '',
+  }
+}),
+
     })
   } catch (error) {
     console.error(error)
