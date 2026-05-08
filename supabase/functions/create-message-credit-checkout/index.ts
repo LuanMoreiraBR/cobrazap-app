@@ -8,7 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const ALLOWED_PACKAGES = [50, 100, 250]
+const MESSAGE_CREDIT_UNIT_PRICE = 0.25
+const MIN_QUANTITY = 10
+const MAX_QUANTITY = 5000
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -37,37 +39,78 @@ function getNotificationUrl() {
   return `${supabaseUrl}/functions/v1/platform-payment-webhook`
 }
 
+function normalizeInstallments(value: unknown) {
+  const installments = Number(value || 1)
+
+  if (!Number.isFinite(installments)) return 1
+
+  return Math.max(1, Math.min(installments, 12))
+}
+
+function normalizeQuantity(value: unknown) {
+  const quantity = Math.floor(Number(value || 0))
+
+  if (!Number.isFinite(quantity)) return 0
+
+  return quantity
+}
+
+function calculateAmount(quantity: number) {
+  return Number((quantity * MESSAGE_CREDIT_UNIT_PRICE).toFixed(2))
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-  return new Response('ok', {
-    status: 200,
-    headers: corsHeaders,
-  })
-}
+    return new Response('ok', {
+      status: 200,
+      headers: corsHeaders,
+    })
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Método não permitido.',
+      },
+      405,
+    )
+  }
 
   try {
     const accessToken = Deno.env.get('MERCADO_PAGO_ACCESS_TOKEN')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-    if (!accessToken) throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado.')
+    if (!accessToken) {
+      throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado.')
+    }
+
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Variáveis do Supabase não configuradas.')
     }
 
-    const { user_id, quantity, installments = 1 } = await req.json()
+    const body = await req.json().catch(() => ({}))
 
-    if (!user_id) {
-      return jsonResponse({ ok: false, error: 'user_id é obrigatório.' }, 400)
-    }
+    const userId = String(body.user_id || '')
+    const quantity = normalizeQuantity(body.quantity)
+    const installments = normalizeInstallments(body.installments)
 
-    const packageQuantity = Number(quantity || 0)
-
-    if (!ALLOWED_PACKAGES.includes(packageQuantity)) {
+    if (!userId) {
       return jsonResponse(
         {
           ok: false,
-          error: 'Pacote inválido. Use 50, 100 ou 250 mensagens.',
+          error: 'user_id é obrigatório.',
+        },
+        400,
+      )
+    }
+
+    if (quantity < MIN_QUANTITY || quantity > MAX_QUANTITY) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: `Quantidade inválida. Escolha entre ${MIN_QUANTITY} e ${MAX_QUANTITY} mensagens.`,
         },
         400,
       )
@@ -75,91 +118,64 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    const { data: subscription, error: subscriptionError } = await supabase
-      .from('user_subscriptions')
-      .select(`
-        *,
-        plan:platform_plans (*)
-      `)
-      .eq('user_id', user_id)
-      .maybeSingle()
-
-    if (subscriptionError) throw subscriptionError
-
-    const hasActivePlan =
-      subscription?.status === 'active' &&
-      (!subscription.current_period_end ||
-        new Date(subscription.current_period_end) > new Date())
-
-    if (!hasActivePlan) {
-      return jsonResponse(
-        {
-          ok: false,
-          error: 'Créditos extras estão disponíveis apenas para usuários com plano ativo.',
-        },
-        402,
-      )
-    }
-
-    const plan = subscription.plan
-    const unitPrice = Number(plan?.extra_message_price || 0)
-
-    if (!unitPrice || unitPrice <= 0) {
-      throw new Error('Preço de mensagem extra não configurado para este plano.')
-    }
-
-    const amount = Number((packageQuantity * unitPrice).toFixed(2))
-    const appUrl = getBaseAppUrl()
+    const amount = calculateAmount(quantity)
 
     const { data: purchase, error: purchaseError } = await supabase
       .from('message_credit_purchases')
       .insert({
-        user_id,
-        plan_id: plan.id,
-        quantity: packageQuantity,
+        user_id: userId,
+        quantity,
         remaining: 0,
-        unit_price: unitPrice,
         amount,
-        provider: 'mercado_pago',
         status: 'pending',
-        checkout_type: 'message_credits',
+        provider: 'mercado_pago',
       })
       .select('*')
       .single()
 
     if (purchaseError) throw purchaseError
 
+    const appUrl = getBaseAppUrl()
+    const returnBase = `${appUrl}/pagamento/retorno?flow=credits`
+
     const preferenceBody = {
       items: [
         {
-          id: `messages-${packageQuantity}`,
-          title: `${packageQuantity} mensagens extras - Lembrei`,
-          description: `Pacote de ${packageQuantity} mensagens extras para o plano ${plan.name}`,
+          id: `message-credits-${quantity}`,
+          title: `${quantity} mensagens extras - Lembrei`,
+          description: `Pacote com ${quantity} mensagens extras para o Lembrei`,
           quantity: 1,
           currency_id: 'BRL',
           unit_price: amount,
         },
       ],
+
       external_reference: purchase.id,
+
       notification_url: getNotificationUrl(),
+
       back_urls: {
-        success: `${appUrl}/app?credits=success`,
-        pending: `${appUrl}/app?credits=pending`,
-        failure: `${appUrl}/app?credits=failure`,
+        success: `${returnBase}&status=success`,
+        pending: `${returnBase}&status=pending`,
+        failure: `${returnBase}&status=failure`,
       },
+
       auto_return: 'approved',
+
       payment_methods: {
-        installments: Math.max(1, Math.min(Number(installments || 1), 12)),
-        default_installments: Math.max(1, Math.min(Number(installments || 1), 12)),
+        installments,
+        default_installments: installments,
         excluded_payment_types: [],
         excluded_payment_methods: [],
       },
+
       metadata: {
-        type: 'message_credits',
-        user_id,
-        plan_id: plan.id,
+        type: 'message_credit_purchase',
+        checkout_type: 'message_credit_purchase',
+        user_id: userId,
         purchase_id: purchase.id,
-        quantity: packageQuantity,
+        message_credit_purchase_id: purchase.id,
+        quantity,
       },
     }
 
@@ -178,14 +194,20 @@ serve(async (req) => {
     const mpData = await mpResponse.json()
 
     if (!mpResponse.ok) {
-      console.error('Erro Mercado Pago créditos:', mpData)
-      throw new Error(mpData?.message || 'Erro ao criar checkout de créditos.')
+      console.error('Erro Mercado Pago compra de créditos:', mpData)
+      throw new Error(
+        mpData?.message || 'Erro ao criar checkout do pacote de mensagens.',
+      )
     }
 
     const paymentUrl = mpData.init_point || mpData.sandbox_init_point || null
-    const preferenceId = String(mpData.id)
+    const preferenceId = String(mpData.id || '')
 
-    const { data: updatedPurchase, error: updateError } = await supabase
+    if (!preferenceId) {
+      throw new Error('Mercado Pago não retornou preference_id.')
+    }
+
+    const { data: updatedPurchase, error: updatePurchaseError } = await supabase
       .from('message_credit_purchases')
       .update({
         mercado_pago_preference_id: preferenceId,
@@ -195,12 +217,15 @@ serve(async (req) => {
       .select('*')
       .single()
 
-    if (updateError) throw updateError
+    if (updatePurchaseError) throw updatePurchaseError
 
     return jsonResponse({
       ok: true,
       purchase: updatedPurchase,
       payment_url: paymentUrl,
+      preference_id: preferenceId,
+      quantity,
+      amount,
     })
   } catch (error) {
     console.error(error)

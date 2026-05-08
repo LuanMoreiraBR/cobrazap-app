@@ -210,6 +210,7 @@ serve(async (req) => {
     if (paymentRowError) throw paymentRowError
 
     const appUrl = getBaseAppUrl()
+    const returnBase = `${appUrl}/pagamento/retorno?flow=plan`
 
     const preferenceBody = {
       items: [
@@ -229,9 +230,9 @@ serve(async (req) => {
       notification_url: getNotificationUrl(),
 
       back_urls: {
-        success: `${appUrl}/app?payment=success`,
-        pending: `${appUrl}/app?payment=pending`,
-        failure: `${appUrl}/planos?payment=failure`,
+        success: `${returnBase}&status=success`,
+        pending: `${returnBase}&status=pending`,
+        failure: `${returnBase}&status=failure`,
       },
 
       auto_return: 'approved',

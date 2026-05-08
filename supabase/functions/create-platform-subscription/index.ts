@@ -269,7 +269,7 @@ serve(async (req) => {
       reason: `Plano ${plan.name} - Lembrei`,
       external_reference: subscription.id,
       payer_email: payerEmail,
-      back_url: `${appUrl}/app/plano?auto_renew=return`,
+      back_url: `${appUrl}/pagamento/retorno?flow=auto-renew&status=pending`,
       notification_url: getNotificationUrl(),
       status: 'pending',
       auto_recurring: {

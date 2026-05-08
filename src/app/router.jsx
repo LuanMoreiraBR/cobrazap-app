@@ -17,6 +17,7 @@ import AdminDashboard from '../pages/AdminDashboard'
 import AdminRoute from '../components/AdminRoute'
 import AdminUserDetail from '../pages/AdminUserDetail'
 import MyPlan from '../pages/MyPlan'
+import PaymentReturn from '../pages/PaymentReturn'
 
 export const router = createBrowserRouter([
   {
@@ -70,6 +71,14 @@ export const router = createBrowserRouter([
     ),
   },
   {
+  path: '/pagamento/retorno',
+  element: (
+    <ProtectedRoute>
+      <PaymentReturn />
+    </ProtectedRoute>
+  ),
+  },
+  {
     path: '/app',
     element: (
       <ProtectedRoute>
@@ -78,6 +87,7 @@ export const router = createBrowserRouter([
         </SubscriptionRoute>
       </ProtectedRoute>
     ),
+    
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'clientes', element: <Clients /> },
