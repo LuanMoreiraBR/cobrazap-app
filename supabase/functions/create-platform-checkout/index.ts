@@ -120,7 +120,8 @@ serve(async (req) => {
 
     if (existingSubscriptionError) throw existingSubscriptionError
 
-    const isCurrentlyActive = isSubscriptionCurrentlyActive(existingSubscription)
+    const isCurrentlyActive =
+      isSubscriptionCurrentlyActive(existingSubscription)
 
     let subscription = existingSubscription
 
