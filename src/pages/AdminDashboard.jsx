@@ -24,6 +24,7 @@ import {
   getAdminDashboard,
   getAdminEventLogs,
   getAdminHealth,
+  runAdminScheduledMessageAction,
   runAdminUserAction,
 } from '../services/adminService'
 import { useAuth } from '../contexts/AuthContext'
@@ -201,6 +202,9 @@ function getActionLabel(action) {
     SET_SUBSCRIPTION_STATUS: 'Alterou assinatura',
     BLOCK_USER: 'Bloqueou usuário',
     UNBLOCK_USER: 'Desbloqueou usuário',
+    RESET_PROCESSING_TO_PENDING: 'Voltou mensagem para pending',
+    REPROCESS_FAILED: 'Reprocessou mensagem failed',
+    CANCEL_MESSAGE: 'Cancelou mensagem',
   }
 
   return labels[action] || action
@@ -214,6 +218,7 @@ function formatAdminDate(value) {
 function getProviderLabel(provider) {
   if (provider === 'twilio') return 'Twilio'
   if (provider === 'mercado_pago') return 'Mercado Pago'
+  if (provider === 'admin') return 'Admin'
   return provider || '-'
 }
 
@@ -403,7 +408,36 @@ function OverviewSection({ data, summary, funnel, twilioBalance }) {
   )
 }
 
-function HealthSection({ healthData, healthLoading, healthError, loadHealth }) {
+
+function HealthActionButton({ children, disabled, onClick, tone = 'blue' }) {
+  const tones = {
+    blue: 'bg-blue-100 text-blue-700 hover:bg-blue-200',
+    green: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200',
+    red: 'bg-red-100 text-red-700 hover:bg-red-200',
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-xl px-3 py-2 text-xs font-black disabled:opacity-60 ${
+        tones[tone] || tones.blue
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function HealthSection({
+  healthData,
+  healthLoading,
+  healthError,
+  loadHealth,
+  scheduledMessageActionLoadingId,
+  handleScheduledMessageAction,
+}) {
   return (
     <div className="space-y-4">
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -639,7 +673,7 @@ function HealthSection({ healthData, healthLoading, healthError, loadHealth }) {
               title="Mensagens failed"
               subtitle="Mensagens agendadas com erro."
               empty="Nenhuma mensagem failed."
-              columns={['Usuário', 'Tentativas', 'Erro']}
+              columns={['Usuário', 'Tentativas', 'Erro', 'Ações']}
               rows={healthData.details?.failed_messages || []}
               renderRow={(item) => (
                 <tr key={item.id} className="border-b align-top last:border-0">
@@ -650,6 +684,35 @@ function HealthSection({ healthData, healthLoading, healthError, loadHealth }) {
                       {item.error_message || '-'}
                     </p>
                   </td>
+                  <td className="py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <HealthActionButton
+                        tone="green"
+                        disabled={scheduledMessageActionLoadingId === item.id}
+                        onClick={() =>
+                          handleScheduledMessageAction({
+                            messageId: item.id,
+                            action: 'REPROCESS_FAILED',
+                          })
+                        }
+                      >
+                        Reprocessar
+                      </HealthActionButton>
+
+                      <HealthActionButton
+                        tone="red"
+                        disabled={scheduledMessageActionLoadingId === item.id}
+                        onClick={() =>
+                          handleScheduledMessageAction({
+                            messageId: item.id,
+                            action: 'CANCEL_MESSAGE',
+                          })
+                        }
+                      >
+                        Cancelar
+                      </HealthActionButton>
+                    </div>
+                  </td>
                 </tr>
               )}
             />
@@ -658,13 +721,42 @@ function HealthSection({ healthData, healthLoading, healthError, loadHealth }) {
               title="Mensagens presas"
               subtitle="Processing travado há mais de 15 minutos."
               empty="Nenhuma mensagem presa."
-              columns={['Usuário', 'Tentativas', 'Desde']}
+              columns={['Usuário', 'Tentativas', 'Desde', 'Ações']}
               rows={healthData.details?.stuck_messages || []}
               renderRow={(item) => (
                 <tr key={item.id} className="border-b last:border-0">
                   <td className="py-3">{item.user_name || item.user_email || item.user_id}</td>
                   <td className="py-3">{item.attempts || 0}</td>
                   <td className="py-3">{formatAdminDate(item.processing_started_at)}</td>
+                  <td className="py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <HealthActionButton
+                        tone="blue"
+                        disabled={scheduledMessageActionLoadingId === item.id}
+                        onClick={() =>
+                          handleScheduledMessageAction({
+                            messageId: item.id,
+                            action: 'RESET_PROCESSING_TO_PENDING',
+                          })
+                        }
+                      >
+                        Voltar pending
+                      </HealthActionButton>
+
+                      <HealthActionButton
+                        tone="red"
+                        disabled={scheduledMessageActionLoadingId === item.id}
+                        onClick={() =>
+                          handleScheduledMessageAction({
+                            messageId: item.id,
+                            action: 'CANCEL_MESSAGE',
+                          })
+                        }
+                      >
+                        Cancelar
+                      </HealthActionButton>
+                    </div>
+                  </td>
                 </tr>
               )}
             />
@@ -1137,6 +1229,7 @@ function LogsSection({
               <option value="all">Todos provedores</option>
               <option value="twilio">Twilio</option>
               <option value="mercado_pago">Mercado Pago</option>
+              <option value="admin">Admin</option>
             </select>
 
             <select
@@ -1333,6 +1426,8 @@ export default function AdminDashboard() {
   const [healthData, setHealthData] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
   const [healthError, setHealthError] = useState('')
+  const [scheduledMessageActionLoadingId, setScheduledMessageActionLoadingId] =
+    useState(null)
 
   async function handleLogout() {
     await signOut()
@@ -1364,6 +1459,37 @@ export default function AdminDashboard() {
       setHealthError(err.message || 'Erro ao carregar saúde operacional.')
     } finally {
       setHealthLoading(false)
+    }
+  }
+
+  async function handleScheduledMessageAction({ messageId, action }) {
+    const messages = {
+      RESET_PROCESSING_TO_PENDING:
+        'Voltar esta mensagem presa em processing para pending?',
+      REPROCESS_FAILED:
+        'Reprocessar esta mensagem failed? Ela voltará para pending.',
+      CANCEL_MESSAGE:
+        'Cancelar esta mensagem? Ela não será mais enviada.',
+    }
+
+    if (!window.confirm(messages[action] || 'Executar ação nesta mensagem?')) {
+      return
+    }
+
+    setScheduledMessageActionLoadingId(messageId)
+    setHealthError('')
+
+    try {
+      await runAdminScheduledMessageAction({
+        messageId,
+        action,
+      })
+
+      await loadHealth()
+    } catch (err) {
+      setHealthError(err.message || 'Erro ao executar ação na mensagem.')
+    } finally {
+      setScheduledMessageActionLoadingId(null)
     }
   }
 
@@ -1568,6 +1694,8 @@ export default function AdminDashboard() {
               healthLoading={healthLoading}
               healthError={healthError}
               loadHealth={loadHealth}
+              scheduledMessageActionLoadingId={scheduledMessageActionLoadingId}
+              handleScheduledMessageAction={handleScheduledMessageAction}
             />
           ) : null}
 

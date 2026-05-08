@@ -149,3 +149,45 @@ export async function getAdminHealth() {
 
   return data
 }
+
+export async function runAdminScheduledMessageAction({
+  messageId,
+  action,
+}) {
+  const { data, error } = await supabase.functions.invoke(
+    'admin-scheduled-message-action',
+    {
+      body: {
+        message_id: messageId,
+        action,
+      },
+    },
+  )
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(
+          errorBody?.error || 'Erro ao executar ação na mensagem agendada.',
+        )
+      } catch {
+        throw new Error(
+          error.message || 'Erro ao executar ação na mensagem agendada.',
+        )
+      }
+    }
+
+    throw new Error(
+      error.message || 'Erro ao executar ação na mensagem agendada.',
+    )
+  }
+
+  if (!data?.ok) {
+    throw new Error(
+      data?.error || 'Erro ao executar ação na mensagem agendada.',
+    )
+  }
+
+  return data
+}

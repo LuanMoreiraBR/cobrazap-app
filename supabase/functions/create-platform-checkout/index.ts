@@ -35,9 +35,30 @@ function getNotificationUrl() {
   return `${supabaseUrl}/functions/v1/platform-payment-webhook`
 }
 
+function normalizeInstallments(value: unknown) {
+  const installments = Number(value || 1)
+
+  if (!Number.isFinite(installments)) return 1
+
+  return Math.max(1, Math.min(installments, 12))
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', {
+      status: 200,
+      headers: corsHeaders,
+    })
+  }
+
+  if (req.method !== 'POST') {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Método não permitido.',
+      },
+      405,
+    )
   }
 
   try {
@@ -45,14 +66,21 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-    if (!accessToken) throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado.')
+    if (!accessToken) {
+      throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado.')
+    }
+
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Variáveis do Supabase não configuradas.')
     }
 
-    const { user_id, plan_id, installments = 1 } = await req.json()
+    const body = await req.json().catch(() => ({}))
 
-    if (!user_id || !plan_id) {
+    const userId = String(body.user_id || '')
+    const planId = String(body.plan_id || '')
+    const installments = normalizeInstallments(body.installments)
+
+    if (!userId || !planId) {
       return jsonResponse(
         {
           ok: false,
@@ -67,7 +95,7 @@ serve(async (req) => {
     const { data: plan, error: planError } = await supabase
       .from('platform_plans')
       .select('*')
-      .eq('id', plan_id)
+      .eq('id', planId)
       .eq('is_active', true)
       .single()
 
@@ -80,10 +108,16 @@ serve(async (req) => {
       .from('user_subscriptions')
       .upsert(
         {
-          user_id,
+          user_id: userId,
           plan_id: plan.id,
           status: 'pending',
-          selected_installments: Number(installments || 1),
+          current_period_start: null,
+          current_period_end: null,
+          mercado_pago_payment_id: null,
+          last_payment_status: null,
+          selected_installments: installments,
+          activated_at: null,
+          cancelled_at: null,
           updated_at: new Date().toISOString(),
         },
         {
@@ -98,7 +132,7 @@ serve(async (req) => {
     const { data: paymentRow, error: paymentRowError } = await supabase
       .from('platform_subscription_payments')
       .insert({
-        user_id,
+        user_id: userId,
         subscription_id: subscription.id,
         plan_id: plan.id,
         amount: plan.price,
@@ -115,32 +149,41 @@ serve(async (req) => {
         {
           id: plan.id,
           title: `Plano ${plan.name} - Lembrei`,
-          description: plan.description || `Assinatura mensal do plano ${plan.name}`,
+          description:
+            plan.description || `Assinatura mensal do plano ${plan.name}`,
           quantity: 1,
           currency_id: 'BRL',
           unit_price: Number(plan.price),
         },
       ],
+
       external_reference: paymentRow.id,
+
       notification_url: getNotificationUrl(),
+
       back_urls: {
         success: `${appUrl}/app/assinatura?payment=success`,
         pending: `${appUrl}/app/assinatura?payment=pending`,
         failure: `${appUrl}/app/assinatura?payment=failure`,
       },
+
       auto_return: 'approved',
+
       payment_methods: {
-        installments: Math.max(1, Math.min(Number(installments || 1), 12)),
-        default_installments: Math.max(1, Math.min(Number(installments || 1), 12)),
+        installments,
+        default_installments: installments,
         excluded_payment_types: [],
         excluded_payment_methods: [],
       },
+
       metadata: {
         type: 'platform_subscription',
-        user_id,
+        checkout_type: 'platform_subscription',
+        user_id: userId,
         plan_id: plan.id,
         subscription_id: subscription.id,
         platform_payment_id: paymentRow.id,
+        platform_subscription_payment_id: paymentRow.id,
       },
     }
 
@@ -164,7 +207,11 @@ serve(async (req) => {
     }
 
     const paymentUrl = mpData.init_point || mpData.sandbox_init_point || null
-    const preferenceId = String(mpData.id)
+    const preferenceId = String(mpData.id || '')
+
+    if (!preferenceId) {
+      throw new Error('Mercado Pago não retornou preference_id.')
+    }
 
     const { data: updatedPayment, error: updatePaymentError } = await supabase
       .from('platform_subscription_payments')
@@ -184,7 +231,7 @@ serve(async (req) => {
         .update({
           mercado_pago_preference_id: preferenceId,
           payment_url: paymentUrl,
-          selected_installments: Number(installments || 1),
+          selected_installments: installments,
           updated_at: new Date().toISOString(),
         })
         .eq('id', subscription.id)
@@ -199,6 +246,7 @@ serve(async (req) => {
       subscription: updatedSubscription,
       payment: updatedPayment,
       payment_url: paymentUrl,
+      preference_id: preferenceId,
     })
   } catch (error) {
     console.error(error)
