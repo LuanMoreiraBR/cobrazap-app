@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import UserPresenceReporter from './UserPresenceReporter'
 
 export default function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -16,5 +17,10 @@ export default function ProtectedRoute({ children }) {
     return <Navigate to="/login" replace />
   }
 
-  return children
+  return (
+    <>
+      <UserPresenceReporter />
+      {children}
+    </>
+  )
 }

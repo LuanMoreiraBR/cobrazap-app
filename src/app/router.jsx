@@ -13,8 +13,20 @@ import Settings from '../pages/Settings'
 import Plans from '../pages/Plans'
 import Privacidade from '../pages/Privacidade'
 import Termos from '../pages/Termos'
+import AdminDashboard from '../pages/AdminDashboard'
+import AdminRoute from '../components/AdminRoute'
 
 export const router = createBrowserRouter([
+  {
+  path: '/admin',
+  element: (
+    <ProtectedRoute>
+      <AdminRoute>
+        <AdminDashboard />
+      </AdminRoute>
+    </ProtectedRoute>
+  ),
+},
   {
     path: '/',
     element: <LandingPage />,
