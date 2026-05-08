@@ -43,6 +43,15 @@ function normalizeInstallments(value: unknown) {
   return Math.max(1, Math.min(installments, 12))
 }
 
+function isSubscriptionCurrentlyActive(subscription: any) {
+  if (!subscription) return false
+  if (subscription.status !== 'active') return false
+
+  if (!subscription.current_period_end) return true
+
+  return new Date(subscription.current_period_end) > new Date()
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -102,32 +111,87 @@ serve(async (req) => {
     if (planError) throw planError
     if (!plan) throw new Error('Plano não encontrado.')
 
-    const appUrl = getBaseAppUrl()
+    const { data: existingSubscription, error: existingSubscriptionError } =
+      await supabase
+        .from('user_subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle()
 
-    const { data: subscription, error: subscriptionError } = await supabase
-      .from('user_subscriptions')
-      .upsert(
-        {
-          user_id: userId,
-          plan_id: plan.id,
-          status: 'pending',
-          current_period_start: null,
-          current_period_end: null,
-          mercado_pago_payment_id: null,
-          last_payment_status: null,
-          selected_installments: installments,
-          activated_at: null,
-          cancelled_at: null,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_id',
-        },
-      )
-      .select('*')
-      .single()
+    if (existingSubscriptionError) throw existingSubscriptionError
 
-    if (subscriptionError) throw subscriptionError
+    const isCurrentlyActive = isSubscriptionCurrentlyActive(existingSubscription)
+
+    let subscription = existingSubscription
+
+    if (!subscription) {
+      const { data: insertedSubscription, error: insertSubscriptionError } =
+        await supabase
+          .from('user_subscriptions')
+          .insert({
+            user_id: userId,
+            plan_id: plan.id,
+            status: 'pending',
+            current_period_start: null,
+            current_period_end: null,
+            mercado_pago_payment_id: null,
+            mercado_pago_preference_id: null,
+            payment_url: null,
+            payment_method: null,
+            selected_installments: installments,
+            last_payment_status: null,
+            activated_at: null,
+            cancelled_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .select('*')
+          .single()
+
+      if (insertSubscriptionError) throw insertSubscriptionError
+
+      subscription = insertedSubscription
+    } else if (isCurrentlyActive) {
+      const { data: updatedSubscription, error: updateSubscriptionError } =
+        await supabase
+          .from('user_subscriptions')
+          .update({
+            selected_installments: installments,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', subscription.id)
+          .select('*')
+          .single()
+
+      if (updateSubscriptionError) throw updateSubscriptionError
+
+      subscription = updatedSubscription
+    } else {
+      const { data: updatedSubscription, error: updateSubscriptionError } =
+        await supabase
+          .from('user_subscriptions')
+          .update({
+            plan_id: plan.id,
+            status: 'pending',
+            current_period_start: null,
+            current_period_end: null,
+            mercado_pago_payment_id: null,
+            mercado_pago_preference_id: null,
+            payment_url: null,
+            payment_method: null,
+            selected_installments: installments,
+            last_payment_status: null,
+            activated_at: null,
+            cancelled_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', subscription.id)
+          .select('*')
+          .single()
+
+      if (updateSubscriptionError) throw updateSubscriptionError
+
+      subscription = updatedSubscription
+    }
 
     const { data: paymentRow, error: paymentRowError } = await supabase
       .from('platform_subscription_payments')
@@ -143,6 +207,8 @@ serve(async (req) => {
       .single()
 
     if (paymentRowError) throw paymentRowError
+
+    const appUrl = getBaseAppUrl()
 
     const preferenceBody = {
       items: [
@@ -162,9 +228,9 @@ serve(async (req) => {
       notification_url: getNotificationUrl(),
 
       back_urls: {
-        success: `${appUrl}/app/assinatura?payment=success`,
-        pending: `${appUrl}/app/assinatura?payment=pending`,
-        failure: `${appUrl}/app/assinatura?payment=failure`,
+        success: `${appUrl}/app?payment=success`,
+        pending: `${appUrl}/app?payment=pending`,
+        failure: `${appUrl}/planos?payment=failure`,
       },
 
       auto_return: 'approved',
@@ -184,6 +250,7 @@ serve(async (req) => {
         subscription_id: subscription.id,
         platform_payment_id: paymentRow.id,
         platform_subscription_payment_id: paymentRow.id,
+        is_renewal: isCurrentlyActive,
       },
     }
 
@@ -247,6 +314,7 @@ serve(async (req) => {
       payment: updatedPayment,
       payment_url: paymentUrl,
       preference_id: preferenceId,
+      is_renewal: isCurrentlyActive,
     })
   } catch (error) {
     console.error(error)

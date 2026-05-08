@@ -151,3 +151,77 @@ export async function createMessageCreditCheckout({
 
   return data
 }
+
+export async function createPlatformAutoSubscription({
+  userId,
+  planId,
+}) {
+  const { data, error } = await supabase.functions.invoke(
+    'create-platform-subscription',
+    {
+      body: {
+        user_id: userId,
+        plan_id: planId,
+      },
+    },
+  )
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(
+          errorBody?.error || 'Erro ao ativar renovação automática.',
+        )
+      } catch {
+        throw new Error(
+          error.message || 'Erro ao ativar renovação automática.',
+        )
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao ativar renovação automática.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao ativar renovação automática.')
+  }
+
+  return data
+}
+
+export async function cancelPlatformAutoSubscription({
+  userId,
+}) {
+  const { data, error } = await supabase.functions.invoke(
+    'cancel-platform-subscription',
+    {
+      body: {
+        user_id: userId,
+      },
+    },
+  )
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(
+          errorBody?.error || 'Erro ao cancelar renovação automática.',
+        )
+      } catch {
+        throw new Error(
+          error.message || 'Erro ao cancelar renovação automática.',
+        )
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao cancelar renovação automática.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao cancelar renovação automática.')
+  }
+
+  return data
+}

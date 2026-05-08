@@ -18,11 +18,34 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-function addOneMonth() {
-  const now = new Date()
-  const next = new Date(now)
+function addOneMonthFrom(date: Date) {
+  const next = new Date(date)
   next.setMonth(next.getMonth() + 1)
   return next.toISOString()
+}
+
+function getRenewalPeriod(subscription: any) {
+  const now = new Date()
+
+  const currentEnd = subscription?.current_period_end
+    ? new Date(subscription.current_period_end)
+    : null
+
+  const hasFuturePeriod = currentEnd && currentEnd > now
+
+  const periodStart = hasFuturePeriod
+    ? subscription.current_period_start || now.toISOString()
+    : now.toISOString()
+
+  const baseForEnd = hasFuturePeriod ? currentEnd : now
+
+  const periodEnd = addOneMonthFrom(baseForEnd)
+
+  return {
+    periodStart,
+    periodEnd,
+    wasRenewal: Boolean(hasFuturePeriod),
+  }
 }
 
 function getEventType(url: URL, body: any) {
@@ -197,25 +220,61 @@ async function processPlatformSubscriptionPayment({
     .eq('id', paymentRow.id)
 
   if (isApproved) {
-    const periodStart = new Date().toISOString()
-    const periodEnd = addOneMonth()
-
-    const { error: subscriptionError } = await supabase
+  const { data: currentSubscription, error: currentSubscriptionError } =
+    await supabase
       .from('user_subscriptions')
-      .update({
-        status: 'active',
-        plan_id: paymentRow.plan_id,
-        current_period_start: periodStart,
-        current_period_end: periodEnd,
-        mercado_pago_payment_id: paymentId,
-        last_payment_status: payment.status,
-        activated_at: paymentRow.paid_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .select('*')
       .eq('id', paymentRow.subscription_id)
+      .maybeSingle()
 
-    if (subscriptionError) throw subscriptionError
-  }
+  if (currentSubscriptionError) throw currentSubscriptionError
+
+  const { periodStart, periodEnd, wasRenewal } =
+    getRenewalPeriod(currentSubscription)
+
+  const { error: subscriptionError } = await supabase
+    .from('user_subscriptions')
+    .update({
+      status: 'active',
+      plan_id: paymentRow.plan_id,
+      current_period_start: periodStart,
+      current_period_end: periodEnd,
+      mercado_pago_payment_id: paymentId,
+      last_payment_status: payment.status,
+      activated_at:
+        currentSubscription?.activated_at ||
+        paymentRow.paid_at ||
+        new Date().toISOString(),
+      cancelled_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', paymentRow.subscription_id)
+
+  if (subscriptionError) throw subscriptionError
+
+  await logPlatformEvent({
+    supabase,
+    provider: 'mercado_pago',
+    eventType: wasRenewal
+      ? 'platform_subscription_renewed'
+      : 'platform_subscription_activated',
+    userId: paymentRow.user_id,
+    relatedTable: 'user_subscriptions',
+    relatedId: paymentRow.subscription_id,
+    status: 'success',
+    message: wasRenewal
+      ? 'Assinatura renovada e período estendido.'
+      : 'Assinatura ativada após pagamento aprovado.',
+    requestPayload,
+    responsePayload: {
+      payment_id: paymentId,
+      plan_id: paymentRow.plan_id,
+      period_start: periodStart,
+      period_end: periodEnd,
+      was_renewal: wasRenewal,
+    },
+  })
+}
 
   await logPlatformEvent({
     supabase,
@@ -436,6 +495,222 @@ async function processChargePayment({
   }
 }
 
+function getPreapprovalIdFromRequest(url: URL, body: any) {
+  const queryDataId = url.searchParams.get('data.id')
+  const queryId = url.searchParams.get('id')
+  const queryResource = url.searchParams.get('resource')
+
+  const bodyDataId = body?.data?.id
+  const bodyId = body?.id
+  const bodyResource = body?.resource
+
+  const resource = String(queryResource || bodyResource || '')
+
+  if (resource.includes('/preapproval/')) {
+    return resource.split('/preapproval/')[1]
+  }
+
+  return String(queryDataId || bodyDataId || queryId || bodyId || '')
+}
+
+function isPreapprovalEvent(eventType: string, body: any) {
+  const normalized = String(eventType || '').toLowerCase()
+  const topic = String(body?.topic || body?.type || '').toLowerCase()
+  const resource = String(body?.resource || '').toLowerCase()
+
+  return (
+    normalized.includes('preapproval') ||
+    topic.includes('preapproval') ||
+    resource.includes('/preapproval/')
+  )
+}
+
+async function getPreapprovalFromMercadoPago(
+  preapprovalId: string,
+  accessToken: string,
+) {
+  const response = await fetch(
+    `https://api.mercadopago.com/preapproval/${preapprovalId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  )
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    console.error('Erro ao buscar preapproval Mercado Pago:', data)
+    throw new Error(data?.message || 'Erro ao buscar assinatura no Mercado Pago.')
+  }
+
+  return data
+}
+
+function getPeriodAfterAutoSubscriptionAuthorization(subscription: any) {
+  const now = new Date()
+
+  const currentEnd = subscription?.current_period_end
+    ? new Date(subscription.current_period_end)
+    : null
+
+  const hasFuturePeriod = currentEnd && currentEnd > now
+
+  return {
+    periodStart: hasFuturePeriod
+      ? subscription.current_period_start || now.toISOString()
+      : now.toISOString(),
+    periodEnd: addOneMonthFrom(hasFuturePeriod ? currentEnd : now),
+  }
+}
+
+async function processPreapprovalWebhook({
+  supabase,
+  accessToken,
+  url,
+  body,
+  requestPayload,
+}: {
+  supabase: any
+  accessToken: string
+  url: URL
+  body: any
+  requestPayload: Record<string, unknown>
+}) {
+  const preapprovalId = getPreapprovalIdFromRequest(url, body)
+
+  if (!preapprovalId) {
+    await logPlatformEvent({
+      supabase,
+      provider: 'mercado_pago',
+      eventType: 'preapproval_webhook_without_id',
+      status: 'ignored',
+      message: 'Webhook de assinatura sem preapprovalId.',
+      requestPayload,
+    })
+
+    return {
+      handled: true,
+      ignored: true,
+      reason: 'Sem preapprovalId.',
+    }
+  }
+
+  const preapproval = await getPreapprovalFromMercadoPago(
+    preapprovalId,
+    accessToken,
+  )
+
+  const externalReference = String(preapproval.external_reference || '')
+  const status = String(preapproval.status || '')
+
+  let query = supabase
+    .from('user_subscriptions')
+    .select('*')
+
+  if (externalReference) {
+    query = query.eq('id', externalReference)
+  } else {
+    query = query.eq('mercado_pago_preapproval_id', preapprovalId)
+  }
+
+  const { data: subscription, error: subscriptionError } =
+    await query.maybeSingle()
+
+  if (subscriptionError) throw subscriptionError
+
+  if (!subscription) {
+    await logPlatformEvent({
+      supabase,
+      provider: 'mercado_pago',
+      eventType: 'preapproval_subscription_not_found',
+      status: 'ignored',
+      message: 'Assinatura local não encontrada para preapproval Mercado Pago.',
+      requestPayload,
+      responsePayload: {
+        preapproval_id: preapprovalId,
+        preapproval_status: status,
+        external_reference: externalReference,
+      },
+    })
+
+    return {
+      handled: true,
+      ignored: true,
+      reason: 'Assinatura local não encontrada.',
+    }
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    mercado_pago_preapproval_id: preapprovalId,
+    auto_renew_status: status,
+    auto_renew_last_event_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+
+  if (status === 'authorized') {
+    const { periodStart, periodEnd } =
+      getPeriodAfterAutoSubscriptionAuthorization(subscription)
+
+    updatePayload.auto_renew = true
+    updatePayload.status = 'active'
+    updatePayload.current_period_start = periodStart
+    updatePayload.current_period_end = periodEnd
+    updatePayload.activated_at =
+      subscription.activated_at || new Date().toISOString()
+    updatePayload.cancelled_at = null
+    updatePayload.auto_renew_started_at =
+      subscription.auto_renew_started_at || new Date().toISOString()
+    updatePayload.auto_renew_cancelled_at = null
+  }
+
+  if (['cancelled', 'paused'].includes(status)) {
+    updatePayload.auto_renew = false
+    updatePayload.auto_renew_cancelled_at = new Date().toISOString()
+  }
+
+  const { error: updateError } = await supabase
+    .from('user_subscriptions')
+    .update(updatePayload)
+    .eq('id', subscription.id)
+
+  if (updateError) throw updateError
+
+  await logPlatformEvent({
+    supabase,
+    provider: 'mercado_pago',
+    eventType:
+      status === 'authorized'
+        ? 'platform_auto_subscription_authorized'
+        : 'platform_auto_subscription_updated',
+    userId: subscription.user_id,
+    relatedTable: 'user_subscriptions',
+    relatedId: subscription.id,
+    status: status === 'authorized' ? 'success' : 'info',
+    message:
+      status === 'authorized'
+        ? 'Renovação automática autorizada no Mercado Pago.'
+        : `Assinatura automática atualizada com status ${status}.`,
+    requestPayload,
+    responsePayload: {
+      preapproval_id: preapprovalId,
+      preapproval_status: status,
+      external_reference: externalReference,
+      update_payload: updatePayload,
+    },
+  })
+
+  return {
+    handled: true,
+    type: 'preapproval',
+    preapproval_id: preapprovalId,
+    preapproval_status: status,
+    subscription_id: subscription.id,
+    user_id: subscription.user_id,
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -485,7 +760,9 @@ serve(async (req) => {
       requestPayload,
     })
 
-    if (shouldIgnoreEventType(eventType)) {
+    const isPreapproval = isPreapprovalEvent(eventType, body)
+
+  if (!isPreapproval && shouldIgnoreEventType(eventType)) {
       await logPlatformEvent({
         supabase,
         provider: 'mercado_pago',
@@ -501,6 +778,21 @@ serve(async (req) => {
         reason: `Evento ignorado: ${eventType}`,
       })
     }
+
+    if (isPreapproval) {
+  const preapprovalResult = await processPreapprovalWebhook({
+    supabase,
+    accessToken,
+    url,
+    body,
+    requestPayload,
+  })
+
+  return jsonResponse({
+    ok: true,
+    ...preapprovalResult,
+  })
+}
 
     const paymentId = getPaymentIdFromRequest(url, body)
 

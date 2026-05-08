@@ -7,6 +7,7 @@ import {
   LogOut,
   BellRing,
   PlugZap,
+  CreditCard,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
@@ -17,7 +18,9 @@ const navItems = [
   { to: '/app/clientes', label: 'Clientes', icon: Users },
   { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
   { to: '/app/automacoes', label: 'Automações', icon: BellRing },
+  { to: '/app/plano', label: 'Plano', icon: CreditCard },
   { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap },
+  
 ]
 
 const navClass = ({ isActive }) =>

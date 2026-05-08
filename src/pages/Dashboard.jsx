@@ -38,6 +38,26 @@ function isOverdue(charge) {
   return due < new Date(today.getFullYear(), today.getMonth(), today.getDate())
 }
 
+function getDaysUntilDate(value) {
+  if (!value) return null
+
+  const now = new Date()
+  const end = new Date(value)
+
+  now.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+
+  const diff = end.getTime() - now.getTime()
+
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+function formatShortDate(value) {
+  if (!value) return ''
+
+  return new Date(value).toLocaleDateString('pt-BR')
+}
+
 function getUsagePresentation(usage) {
   if (!usage) {
     return {
@@ -46,10 +66,10 @@ function getUsagePresentation(usage) {
       clientsLabel: '0/10',
       messageSubtitle: 'Teste grátis',
       clientSubtitle: 'Limite disponível',
-      planSubtitle: 'Carregando informações do plano.',
-      planButtonLabel: 'Escolher plano',
       canCreateClient: true,
+      canSendMessage: true,
       hasActivePlan: false,
+      extraCredits: 0,
       isNearLimit: false,
       isAtLimit: false,
     }
@@ -61,7 +81,9 @@ function getUsagePresentation(usage) {
   const messageLimit = Number(usage.messageLimit || 0)
   const extraCredits = Number(usage.extraCredits || 0)
   const messagesUsed = Number(usage.messagesUsed || 0)
-  const totalMessageLimit = Number(usage.totalMessageLimit || 0)
+
+  const totalMessageLimit =
+    Number(usage.totalMessageLimit || 0) || messageLimit + extraCredits
 
   const clientLimit = Number(usage.clientLimit || 0)
   const clientsUsed = Number(usage.clientsUsed || 0)
@@ -76,15 +98,11 @@ function getUsagePresentation(usage) {
     clientsLabel: clientLimit > 0 ? `${clientsUsed}/${clientLimit}` : `${clientsUsed}/∞`,
     messageSubtitle:
       extraCredits > 0
-        ? `${extraCredits} créditos extras disponíveis`
+        ? `+${extraCredits} mensagens extras disponíveis`
         : hasActivePlan
           ? planName
           : 'Teste grátis',
     clientSubtitle: usage.canCreateClient ? 'Limite disponível' : 'Limite atingido',
-    planSubtitle: hasActivePlan
-      ? 'Gerencie seu plano ou compre mensagens extras.'
-      : 'Você tem 10 mensagens grátis para testar.',
-    planButtonLabel: hasActivePlan ? 'Alterar plano' : 'Escolher plano',
     canCreateClient: Boolean(usage.canCreateClient),
     canSendMessage: Boolean(usage.canSendMessage),
     hasActivePlan,
@@ -178,6 +196,15 @@ export default function Dashboard() {
 
   const usageInfo = useMemo(() => getUsagePresentation(usage), [usage])
 
+  const subscription = usage?.subscription || null
+  const planDaysUntilEnd = getDaysUntilDate(subscription?.current_period_end)
+
+  const showPlanExpirationWarning =
+    usage?.hasActivePlan &&
+    planDaysUntilEnd !== null &&
+    planDaysUntilEnd >= 0 &&
+    planDaysUntilEnd <= 3
+
   const enrichedCharges = useMemo(() => {
     return charges.map((charge) => ({
       ...charge,
@@ -224,6 +251,31 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {showPlanExpirationWarning ? (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-800">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-black">
+                Seu plano vence em {planDaysUntilEnd}{' '}
+                {planDaysUntilEnd === 1 ? 'dia' : 'dias'}.
+              </p>
+
+              <p className="mt-1 text-sm">
+                Vencimento em {formatShortDate(subscription?.current_period_end)}.
+                Renove para manter seu acesso sem interrupção.
+              </p>
+            </div>
+
+            <Link
+              to="/app/plano"
+              className="inline-flex items-center justify-center rounded-2xl bg-[#5B4BFF] px-5 py-3 text-sm font-black text-white hover:bg-[#4A3BE8]"
+            >
+              Ver plano
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
       {usageInfo.hasActivePlan && usageInfo.isNearLimit ? (
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           <strong>Atenção:</strong> você está perto do limite de mensagens do mês.
@@ -263,7 +315,7 @@ export default function Dashboard() {
         setReferenceDate={setReferenceDate}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <DashboardCard
           title="Mensagens do mês"
           value={usageInfo.messagesLabel}
@@ -279,36 +331,6 @@ export default function Dashboard() {
           icon={Users}
           color={usageInfo.canCreateClient ? 'blue' : 'red'}
         />
-
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm font-medium text-slate-500">Plano</p>
-
-          <p className="mt-3 text-2xl font-bold text-[#070D2D]">
-            {usageInfo.planName}
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            {usageInfo.planSubtitle}
-          </p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              to="/planos"
-              className="inline-flex rounded-2xl bg-[#5B4BFF] px-4 py-2 text-sm font-bold text-white hover:bg-[#4A3BE8]"
-            >
-              {usageInfo.planButtonLabel}
-            </Link>
-
-            {usageInfo.hasActivePlan ? (
-              <Link
-                to="/planos?buy=credits"
-                className="inline-flex rounded-2xl border border-[#5B4BFF]/20 bg-white px-4 py-2 text-sm font-bold text-[#5B4BFF] hover:bg-[#5B4BFF]/5"
-              >
-                Comprar mensagens
-              </Link>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">

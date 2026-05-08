@@ -16,6 +16,7 @@ import Termos from '../pages/Termos'
 import AdminDashboard from '../pages/AdminDashboard'
 import AdminRoute from '../components/AdminRoute'
 import AdminUserDetail from '../pages/AdminUserDetail'
+import MyPlan from '../pages/MyPlan'
 
 export const router = createBrowserRouter([
   {
@@ -83,6 +84,7 @@ export const router = createBrowserRouter([
       { path: 'cobrancas', element: <Charges /> },
       { path: 'automacoes', element: <Automations /> },
       { path: 'configuracoes', element: <Settings /> },
+      { path: 'plano', element: <MyPlan /> },
     ],
   },
 ])
