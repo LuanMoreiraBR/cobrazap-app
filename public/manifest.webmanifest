@@ -1,8 +1,8 @@
 {
   "name": "Lembrei",
   "short_name": "Lembrei",
-  "description": "Lembrei - cobranças, lembretes e pagamentos pelo WhatsApp.",
-  "start_url": "/",
+  "description": "Lembrei - cobranças automáticas, lembretes e pagamentos pelo WhatsApp.",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

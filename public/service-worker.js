@@ -1,7 +1,8 @@
-const CACHE_NAME = 'lembrei-pwa-v1'
+const CACHE_NAME = 'lembrei-pwa-v3'
 
 const STATIC_ASSETS = [
   '/',
+  '/login',
   '/manifest.webmanifest',
   '/favicon.png',
   '/icon-192.png',
