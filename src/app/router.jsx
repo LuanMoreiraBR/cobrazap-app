@@ -15,6 +15,7 @@ import Privacidade from '../pages/Privacidade'
 import Termos from '../pages/Termos'
 import AdminDashboard from '../pages/AdminDashboard'
 import AdminRoute from '../components/AdminRoute'
+import AdminUserDetail from '../pages/AdminUserDetail'
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +28,18 @@ export const router = createBrowserRouter([
     </ProtectedRoute>
   ),
 },
+
+{
+  path: '/admin/users/:userId',
+  element: (
+    <ProtectedRoute>
+      <AdminRoute>
+        <AdminUserDetail />
+      </AdminRoute>
+    </ProtectedRoute>
+  ),
+},
+
   {
     path: '/',
     element: <LandingPage />,

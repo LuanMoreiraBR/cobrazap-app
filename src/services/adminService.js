@@ -60,3 +60,30 @@ export async function runAdminUserAction(payload) {
 
   return data
 }
+
+export async function getAdminUserDetail(userId) {
+  const { data, error } = await supabase.functions.invoke('admin-user-detail', {
+    body: {
+      user_id: userId,
+    },
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao carregar detalhes do usuário.')
+      } catch {
+        throw new Error(error.message || 'Erro ao carregar detalhes do usuário.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao carregar detalhes do usuário.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao carregar detalhes do usuário.')
+  }
+
+  return data
+}
