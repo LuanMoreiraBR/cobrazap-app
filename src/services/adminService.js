@@ -124,3 +124,28 @@ export async function getAdminEventLogs({
 
   return data
 }
+
+export async function getAdminHealth() {
+  const { data, error } = await supabase.functions.invoke('admin-health', {
+    body: {},
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao carregar saúde operacional.')
+      } catch {
+        throw new Error(error.message || 'Erro ao carregar saúde operacional.')
+      }
+    }
+
+    throw new Error(error.message || 'Erro ao carregar saúde operacional.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao carregar saúde operacional.')
+  }
+
+  return data
+}
