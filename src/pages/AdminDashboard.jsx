@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import AdminUserActionModal from '../components/AdminUserActionModal'
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
   CreditCard,
   History,
   LayoutDashboard,
@@ -229,6 +229,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoadingUserId, setActionLoadingUserId] = useState(null)
+  const [selectedActionUser, setSelectedActionUser] = useState(null)
+  const [actionModalOpen, setActionModalOpen] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [planFilter, setPlanFilter] = useState('all')
@@ -258,34 +260,26 @@ export default function AdminDashboard() {
     load()
   }, [])
 
-  async function runUserAction(payload) {
-    const confirmMessage =
-      payload.action === 'ADD_CREDITS'
-        ? `Adicionar ${payload.quantity} créditos para este usuário?`
-        : payload.action === 'CHANGE_PLAN'
-          ? `Alterar plano deste usuário para ${payload.plan_id}?`
-          : payload.action === 'SET_SUBSCRIPTION_STATUS'
-            ? `Alterar status da assinatura para ${payload.status}?`
-            : payload.action === 'BLOCK_USER'
-              ? 'Bloquear este usuário?'
-              : payload.action === 'UNBLOCK_USER'
-                ? 'Desbloquear este usuário?'
-                : 'Executar esta ação?'
+  function openActionModal(user) {
+  setSelectedActionUser(user)
+  setActionModalOpen(true)
+}
 
-    if (!window.confirm(confirmMessage)) return
+async function runUserAction(payload) {
+  setActionLoadingUserId(payload.target_user_id)
+  setError('')
 
-    setActionLoadingUserId(payload.target_user_id)
-    setError('')
-
-    try {
-      await runAdminUserAction(payload)
-      await load()
-    } catch (err) {
-      setError(err.message || 'Erro ao executar ação.')
-    } finally {
-      setActionLoadingUserId(null)
-    }
+  try {
+    await runAdminUserAction(payload)
+    setActionModalOpen(false)
+    setSelectedActionUser(null)
+    await load()
+  } catch (err) {
+    setError(err.message || 'Erro ao executar ação.')
+  } finally {
+    setActionLoadingUserId(null)
   }
+}
 
   const twilioBalance = useMemo(() => {
     if (!data?.twilio?.available) return 'Indisponível'
@@ -682,163 +676,103 @@ export default function AdminDashboard() {
                     </thead>
 
                     <tbody>
-                      {filteredUsers.map((item) => (
-                        <tr key={item.user_id} className="border-b last:border-0">
+  {filteredUsers.length === 0 ? (
+    <tr>
+      <td colSpan="10" className="py-5 text-slate-500">
+        Nenhum usuário encontrado com os filtros atuais.
+      </td>
+    </tr>
+  ) : (
+    filteredUsers.map((item) => (
+      <tr key={item.user_id} className="border-b last:border-0">
+        <td className="py-3">
+          <p className="font-bold text-[#070D2D]">
+            {item.name || 'Sem nome'}
+          </p>
+          <p className="text-xs text-slate-500">{item.email}</p>
+        </td>
 
-                          <Link
-  to={`/admin/users/${item.user_id}`}
-  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-[#070D2D] hover:bg-slate-200"
->
-  Ver detalhes
-</Link>
-                          <td className="py-3">
-                            <p className="font-bold text-[#070D2D]">
-                              {item.name || 'Sem nome'}
-                            </p>
-                            <p className="text-xs text-slate-500">{item.email}</p>
-                          </td>
+        <td className="py-3">
+          <div className="space-y-1">
+            <StatusPill
+              tone={
+                item.is_blocked
+                  ? 'red'
+                  : item.subscription_status === 'active'
+                    ? 'green'
+                    : 'slate'
+              }
+            >
+              {item.is_blocked ? 'Bloqueado' : item.plan}
+            </StatusPill>
 
-                          <td className="py-3">
-                            <div className="space-y-1">
-                              <StatusPill
-                                tone={
-                                  item.is_blocked
-                                    ? 'red'
-                                    : item.subscription_status === 'active'
-                                      ? 'green'
-                                      : 'slate'
-                                }
-                              >
-                                {item.is_blocked ? 'Bloqueado' : item.plan}
-                              </StatusPill>
+            <p className="text-xs text-slate-400">
+              {item.is_blocked
+                ? item.blocked_reason || 'Usuário bloqueado'
+                : item.subscription_status}
+            </p>
+          </div>
+        </td>
 
-                              <p className="text-xs text-slate-400">
-                                {item.is_blocked
-                                  ? item.blocked_reason || 'Usuário bloqueado'
-                                  : item.subscription_status}
-                              </p>
-                            </div>
-                          </td>
+        <td className="py-3">
+          {item.clients_count}/{item.client_limit || '∞'}
+        </td>
 
-                          <td className="py-3">
-                            {item.clients_count}/{item.client_limit || '∞'}
-                          </td>
+        <td className="py-3">
+          <div className="space-y-1">
+            <p>
+              {item.messages_used}/{item.message_limit || '∞'}
+            </p>
 
-                          <td className="py-3">
-                            <div className="space-y-1">
-                              <p>
-                                {item.messages_used}/{item.message_limit || '∞'}
-                              </p>
+            {item.at_limit ? (
+              <StatusPill tone="red">limite atingido</StatusPill>
+            ) : item.near_limit ? (
+              <StatusPill tone="amber">perto do limite</StatusPill>
+            ) : null}
+          </div>
+        </td>
 
-                              {item.at_limit ? (
-                                <StatusPill tone="red">limite atingido</StatusPill>
-                              ) : item.near_limit ? (
-                                <StatusPill tone="amber">perto do limite</StatusPill>
-                              ) : null}
-                            </div>
-                          </td>
+        <td className="py-3">{item.extra_credits}</td>
+        <td className="py-3">{item.charges_count}</td>
 
-                          <td className="py-3">{item.extra_credits}</td>
-                          <td className="py-3">{item.charges_count}</td>
+        <td className="py-3">
+          {formatCurrency(item.received_amount || 0)}
+        </td>
 
-                          <td className="py-3">
-                            {formatCurrency(item.received_amount || 0)}
-                          </td>
+        <td className="py-3">
+          {formatCurrency(item.open_amount || 0)}
+        </td>
 
-                          <td className="py-3">
-                            {formatCurrency(item.open_amount || 0)}
-                          </td>
+        <td className="py-3">
+          {item.last_seen_at
+            ? new Date(item.last_seen_at).toLocaleString('pt-BR')
+            : '-'}
+        </td>
 
-                          <td className="py-3">
-                            {item.last_seen_at
-                              ? new Date(item.last_seen_at).toLocaleString('pt-BR')
-                              : '-'}
-                          </td>
+        <td className="py-3">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/admin/users/${item.user_id}`}
+              className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-[#070D2D] hover:bg-slate-200"
+            >
+              Ver detalhes
+            </Link>
 
-                          <td className="py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={actionLoadingUserId === item.user_id}
-                                onClick={() =>
-                                  runUserAction({
-                                    action: 'ADD_CREDITS',
-                                    target_user_id: item.user_id,
-                                    quantity: 50,
-                                    note: 'Crédito manual pelo painel admin.',
-                                  })
-                                }
-                                className="rounded-xl bg-emerald-100 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
-                              >
-                                +50 créditos
-                              </button>
+            <button
+              type="button"
+              disabled={actionLoadingUserId === item.user_id}
+              onClick={() => openActionModal(item)}
+              className="rounded-xl bg-[#5B4BFF]/10 px-3 py-2 text-xs font-black text-[#5B4BFF] hover:bg-[#5B4BFF]/20 disabled:opacity-60"
+            >
+              Gerenciar
+            </button>
+          </div>
+        </td>
+      </tr>
+    ))
+  )}
+</tbody>
 
-                              <button
-                                type="button"
-                                disabled={actionLoadingUserId === item.user_id}
-                                onClick={() =>
-                                  runUserAction({
-                                    action: 'CHANGE_PLAN',
-                                    target_user_id: item.user_id,
-                                    plan_id: 'scale',
-                                    days: 30,
-                                  })
-                                }
-                                className="rounded-xl bg-[#5B4BFF]/10 px-3 py-2 text-xs font-black text-[#5B4BFF] hover:bg-[#5B4BFF]/20 disabled:opacity-60"
-                              >
-                                Scale 30d
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={actionLoadingUserId === item.user_id}
-                                onClick={() =>
-                                  runUserAction({
-                                    action: 'SET_SUBSCRIPTION_STATUS',
-                                    target_user_id: item.user_id,
-                                    status: 'inactive',
-                                  })
-                                }
-                                className="rounded-xl bg-amber-100 px-3 py-2 text-xs font-black text-amber-700 hover:bg-amber-200 disabled:opacity-60"
-                              >
-                                Inativar
-                              </button>
-
-                              {item.is_blocked ? (
-                                <button
-                                  type="button"
-                                  disabled={actionLoadingUserId === item.user_id}
-                                  onClick={() =>
-                                    runUserAction({
-                                      action: 'UNBLOCK_USER',
-                                      target_user_id: item.user_id,
-                                    })
-                                  }
-                                  className="rounded-xl bg-blue-100 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-200 disabled:opacity-60"
-                                >
-                                  Desbloquear
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={actionLoadingUserId === item.user_id}
-                                  onClick={() =>
-                                    runUserAction({
-                                      action: 'BLOCK_USER',
-                                      target_user_id: item.user_id,
-                                      reason: 'Bloqueado manualmente pela administração.',
-                                    })
-                                  }
-                                  className="rounded-xl bg-red-100 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-200 disabled:opacity-60"
-                                >
-                                  Bloquear
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
                   </table>
                 </div>
               </div>
@@ -1053,6 +987,22 @@ export default function AdminDashboard() {
             </div>
           ) : null}
         </div>
+
+                <AdminUserActionModal
+          open={actionModalOpen}
+          user={selectedActionUser}
+          loading={
+            selectedActionUser
+              ? actionLoadingUserId === selectedActionUser.user_id
+              : false
+          }
+          onClose={() => {
+            if (actionLoadingUserId) return
+            setActionModalOpen(false)
+            setSelectedActionUser(null)
+          }}
+          onSubmit={runUserAction}
+        />
       </main>
     </div>
   )

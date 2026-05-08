@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import AdminUserActionModal from '../components/AdminUserActionModal'
 import {
   ArrowLeft,
   Ban,
@@ -26,7 +27,9 @@ function Card({ title, value, subtitle, icon: Icon }) {
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
           <p className="mt-3 text-3xl font-black text-[#070D2D]">{value}</p>
-          {subtitle ? <p className="mt-1 text-xs text-slate-500">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+          ) : null}
         </div>
 
         <div className="rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20">
@@ -56,7 +59,6 @@ function StatusPill({ children, tone = 'slate' }) {
 
 function formatDateTime(value) {
   if (!value) return '-'
-
   return new Date(value).toLocaleString('pt-BR')
 }
 
@@ -81,6 +83,7 @@ export default function AdminUserDetail() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
+  const [actionModalOpen, setActionModalOpen] = useState(false)
 
   async function handleLogout() {
     await signOut()
@@ -106,21 +109,6 @@ export default function AdminUserDetail() {
   }, [userId])
 
   async function runUserAction(payload) {
-    const confirmMessage =
-      payload.action === 'ADD_CREDITS'
-        ? `Adicionar ${payload.quantity} créditos para este usuário?`
-        : payload.action === 'CHANGE_PLAN'
-          ? `Alterar plano deste usuário para ${payload.plan_id}?`
-          : payload.action === 'SET_SUBSCRIPTION_STATUS'
-            ? `Alterar status da assinatura para ${payload.status}?`
-            : payload.action === 'BLOCK_USER'
-              ? 'Bloquear este usuário?'
-              : payload.action === 'UNBLOCK_USER'
-                ? 'Desbloquear este usuário?'
-                : 'Executar esta ação?'
-
-    if (!window.confirm(confirmMessage)) return
-
     setActionLoading(true)
     setError('')
 
@@ -130,6 +118,7 @@ export default function AdminUserDetail() {
         target_user_id: userId,
       })
 
+      setActionModalOpen(false)
       await load()
     } catch (err) {
       setError(err.message || 'Erro ao executar ação.')
@@ -204,9 +193,7 @@ export default function AdminUserDetail() {
                 {user.is_blocked ? 'Bloqueado' : subscription.plan_name}
               </StatusPill>
 
-              <StatusPill tone="blue">
-                {subscription.status}
-              </StatusPill>
+              <StatusPill tone="blue">{subscription.status}</StatusPill>
             </div>
           </div>
 
@@ -315,79 +302,15 @@ export default function AdminUserDetail() {
             Ajustes manuais para suporte e operação.
           </p>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5">
             <button
               type="button"
               disabled={actionLoading}
-              onClick={() =>
-                runUserAction({
-                  action: 'ADD_CREDITS',
-                  quantity: 50,
-                  note: 'Crédito manual pelo detalhe do usuário.',
-                })
-              }
-              className="rounded-xl bg-emerald-100 px-4 py-3 text-xs font-black text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+              onClick={() => setActionModalOpen(true)}
+              className="rounded-2xl bg-[#5B4BFF] px-5 py-3 text-sm font-black text-white hover:bg-[#4A3BE8] disabled:opacity-60"
             >
-              +50 créditos
+              Gerenciar usuário
             </button>
-
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() =>
-                runUserAction({
-                  action: 'CHANGE_PLAN',
-                  plan_id: 'scale',
-                  days: 30,
-                })
-              }
-              className="rounded-xl bg-[#5B4BFF]/10 px-4 py-3 text-xs font-black text-[#5B4BFF] hover:bg-[#5B4BFF]/20 disabled:opacity-60"
-            >
-              Scale 30d
-            </button>
-
-            <button
-              type="button"
-              disabled={actionLoading}
-              onClick={() =>
-                runUserAction({
-                  action: 'SET_SUBSCRIPTION_STATUS',
-                  status: 'inactive',
-                })
-              }
-              className="rounded-xl bg-amber-100 px-4 py-3 text-xs font-black text-amber-700 hover:bg-amber-200 disabled:opacity-60"
-            >
-              Inativar
-            </button>
-
-            {user.is_blocked ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() =>
-                  runUserAction({
-                    action: 'UNBLOCK_USER',
-                  })
-                }
-                className="rounded-xl bg-blue-100 px-4 py-3 text-xs font-black text-blue-700 hover:bg-blue-200 disabled:opacity-60"
-              >
-                Desbloquear
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() =>
-                  runUserAction({
-                    action: 'BLOCK_USER',
-                    reason: 'Bloqueado manualmente pela administração.',
-                  })
-                }
-                className="rounded-xl bg-red-100 px-4 py-3 text-xs font-black text-red-700 hover:bg-red-200 disabled:opacity-60"
-              >
-                Bloquear
-              </button>
-            )}
           </div>
         </div>
 
@@ -412,9 +335,7 @@ export default function AdminUserDetail() {
                 <tbody>
                   {data.charges.slice(0, 20).map((charge) => (
                     <tr key={charge.id} className="border-b last:border-0">
-                      <td className="py-3">
-                        {charge.client?.name || '-'}
-                      </td>
+                      <td className="py-3">{charge.client?.name || '-'}</td>
                       <td className="py-3">{charge.description || '-'}</td>
                       <td className="py-3">
                         {formatCurrency(charge.amount || 0)}
@@ -609,6 +530,17 @@ export default function AdminUserDetail() {
           </div>
         </div>
       </div>
+
+      <AdminUserActionModal
+        open={actionModalOpen}
+        user={user}
+        loading={actionLoading}
+        onClose={() => {
+          if (actionLoading) return
+          setActionModalOpen(false)
+        }}
+        onSubmit={runUserAction}
+      />
     </div>
   )
 }
