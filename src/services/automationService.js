@@ -1,5 +1,37 @@
 import { supabase } from './supabaseClient'
 import { calculateScheduledFor } from '../utils/scheduleDate'
+const BUSINESS_START_TIME = '08:00'
+const BUSINESS_END_TIME = '22:00'
+const DEFAULT_SEND_TIME = '09:00'
+
+function normalizeSendTime(sendTime) {
+  if (!sendTime) return DEFAULT_SEND_TIME
+
+  const value = String(sendTime).slice(0, 5)
+
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    return DEFAULT_SEND_TIME
+  }
+
+  return value
+}
+
+function isValidBusinessSendTime(sendTime) {
+  const value = normalizeSendTime(sendTime)
+
+  return value >= BUSINESS_START_TIME && value <= BUSINESS_END_TIME
+}
+
+function applySendTimeToDate(isoOrDateString, sendTime) {
+  const normalizedTime = normalizeSendTime(sendTime)
+  const [hours, minutes] = normalizedTime.split(':').map(Number)
+
+  const date = new Date(isoOrDateString)
+
+  date.setHours(hours, minutes, 0, 0)
+
+  return date.toISOString()
+}
 
 function formatCurrencyBRL(amount) {
   return new Intl.NumberFormat('pt-BR', {
@@ -219,28 +251,40 @@ export function buildDefaultRules(selectedRules) {
   return rules
 }
 
-export function buildScheduledDate(dueDate, rule) {
+export function buildScheduledDate(dueDate, rule, sendTime = DEFAULT_SEND_TIME) {
+  const normalizedSendTime = normalizeSendTime(sendTime)
+
+  if (!isValidBusinessSendTime(normalizedSendTime)) {
+    throw new Error('O horário de envio deve estar entre 08:00 e 18:00.')
+  }
+
   if (rule.trigger_type === 'before_due') {
-    return calculateScheduledFor({
+    const scheduledDate = calculateScheduledFor({
       dueDate,
       offsetDays: -Number(rule.offset_days || 0),
       sendImmediatelyIfToday: false,
     })
+
+    return applySendTimeToDate(scheduledDate, normalizedSendTime)
   }
 
   if (rule.trigger_type === 'after_due') {
-    return calculateScheduledFor({
+    const scheduledDate = calculateScheduledFor({
       dueDate,
       offsetDays: Number(rule.offset_days || 0),
       sendImmediatelyIfToday: false,
     })
+
+    return applySendTimeToDate(scheduledDate, normalizedSendTime)
   }
 
-  return calculateScheduledFor({
+  const scheduledDate = calculateScheduledFor({
     dueDate,
     offsetDays: 0,
-    sendImmediatelyIfToday: true,
+    sendImmediatelyIfToday: false,
   })
+
+  return applySendTimeToDate(scheduledDate, normalizedSendTime)
 }
 
 async function getClientById(clientId, userId) {
@@ -255,7 +299,12 @@ async function getClientById(clientId, userId) {
   return data
 }
 
-export async function replaceAutomationForCharge({ user_id, charge, rules }) {
+export async function replaceAutomationForCharge({
+  user_id,
+  charge,
+  rules,
+  send_time = DEFAULT_SEND_TIME,
+}) {
   const clientId = charge.client_id || charge.client?.id
 
   if (!clientId) {
@@ -304,7 +353,7 @@ export async function replaceAutomationForCharge({ user_id, charge, rules }) {
     charge_id: charge.id,
     client_id: client.id,
     automation_rule_id: rule.id,
-    scheduled_for: buildScheduledDate(charge.due_date, rule),
+    scheduled_for: buildScheduledDate(charge.due_date, rule, send_time),
     message_type: rule.message_type,
     message_text: buildAutomationMessage({
       clientName: client.name,
@@ -350,7 +399,9 @@ export async function getScheduledMessages(userId) {
         payment_methods,
         credit_card_enabled,
         pix_qr_code,
-        payment_url
+        payment_url,
+        whatsapp_sent_at,
+        whatsapp_message_sid
       ),
       client:clients (
         id,

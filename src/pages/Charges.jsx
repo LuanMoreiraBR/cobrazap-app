@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+
 import {
   AlertTriangle,
   CalendarClock,
@@ -14,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../services/supabaseClient'
 import { getClients } from '../services/clientsService'
 import {
   createCharge,
@@ -26,9 +28,13 @@ import {
 } from '../services/chargesService'
 import {
   buildDefaultRules,
-  cancelPendingMessagesForCharge,
   replaceAutomationForCharge,
 } from '../services/automationService'
+import {
+  createWhatsappSupportContact,
+  getWhatsappSupportContacts,
+} from '../services/whatsappSupportContactsService'
+import { buildRecurringChargePayloads } from '../utils/recurringChargesHelper'
 import { formatCurrency, formatDate } from '../utils/format'
 import { buildMessage, buildPixMessage, openWhatsApp } from '../utils/whatsapp'
 
@@ -39,6 +45,30 @@ function getTodayInputDate() {
   const day = String(now.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
+}
+
+const BUSINESS_START_TIME = '08:00'
+const BUSINESS_END_TIME = '22:00'
+const DEFAULT_SEND_TIME = '09:00'
+
+function isValidBusinessSendTime(sendTime) {
+  if (!sendTime) return false
+
+  const value = String(sendTime).slice(0, 5)
+
+  return value >= BUSINESS_START_TIME && value <= BUSINESS_END_TIME
+}
+
+function getCurrentInputTime() {
+  const now = new Date()
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+
+  return `${hours}:${minutes}`
+}
+
+function isToday(dateString) {
+  return dateString === getTodayInputDate()
 }
 
 function createInstallmentGroupId() {
@@ -79,8 +109,9 @@ function generateInstallments({ amount, dueDate, installments }) {
   if (!totalAmount || totalAmount <= 0 || !dueDate || totalInstallments < 2) {
     return []
   }
-  
-  const installmentAmount = Math.floor((totalAmount / totalInstallments) * 100) / 100
+
+  const installmentAmount =
+    Math.floor((totalAmount / totalInstallments) * 100) / 100
   const totalCalculated = installmentAmount * totalInstallments
   const difference = Number((totalAmount - totalCalculated).toFixed(2))
 
@@ -107,6 +138,8 @@ const automationTips = {
     'Informe quantos dias depois do vencimento o sistema deve enviar uma nova cobrança. Exemplo: 3 envia 3 dias após vencer.',
   dueDate:
     'Essa é a data base da cobrança. Todos os lembretes automáticos serão calculados a partir dela.',
+  sendTime:
+    'Escolha o horário em que o sistema poderá enviar o WhatsApp. Permitido somente entre 08:00 e 18:00.',
   paymentMethod:
     'Escolha se esta cobrança aceitará apenas Pix ou Pix com opção de pagamento por cartão através do link do Mercado Pago.',
 }
@@ -131,6 +164,7 @@ function createInitialForm() {
     description: '',
     amount: '',
     due_date: getTodayInputDate(),
+    send_time: DEFAULT_SEND_TIME,
     message_type: 'friendly',
     payment_type: 'single',
     installments: 2,
@@ -169,6 +203,10 @@ function getPaymentTypeLabel(charge) {
     return `Parcela ${charge.installment_number}/${charge.installment_total}`
   }
 
+  if (charge.recurrence_type === 'monthly') {
+    return `Recorrente ${charge.recurrence_number}/${charge.recurrence_total}`
+  }
+
   return 'À vista'
 }
 
@@ -183,9 +221,23 @@ function hasGeneratedPayment(charge) {
 
 function isOverdue(charge) {
   if (charge.status === 'pago') return false
+
   const today = new Date()
   const due = new Date(charge.due_date + 'T00:00:00')
+
   return due < new Date(today.getFullYear(), today.getMonth(), today.getDate())
+}
+
+function getSupportContactsText(contacts) {
+  if (!Array.isArray(contacts) || contacts.length === 0) return ''
+
+  return contacts
+    .map((contact) => {
+      const name = contact.name || contact.label || 'Atendimento'
+      const phone = String(contact.phone || '').replace(/\D/g, '')
+      return `${name}: +${phone}`
+    })
+    .join('\n')
 }
 
 function StatBox({ title, value, icon: Icon, className }) {
@@ -210,6 +262,20 @@ export default function Charges() {
 
   const [clients, setClients] = useState([])
   const [charges, setCharges] = useState([])
+  const [supportContacts, setSupportContacts] = useState([])
+
+  const [selectedSupportContactIds, setSelectedSupportContactIds] = useState([])
+  const [newSupportContact, setNewSupportContact] = useState({
+    label: '',
+    name: '',
+    phone: '',
+  })
+
+  const [savingSupportContact, setSavingSupportContact] = useState(false)
+
+  const [isRecurringCharge, setIsRecurringCharge] = useState(false)
+  const [recurrenceMonths, setRecurrenceMonths] = useState(12)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generatingPixId, setGeneratingPixId] = useState(null)
@@ -223,13 +289,22 @@ export default function Charges() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [clientsData, chargesData] = await Promise.all([
-          getClients(user.id),
-          getCharges(user.id),
-        ])
+        const [clientsData, chargesData, supportContactsData] =
+          await Promise.all([
+            getClients(user.id),
+            getCharges(user.id),
+            getWhatsappSupportContacts(user.id),
+          ])
 
         setClients(clientsData)
         setCharges(chargesData)
+        setSupportContacts(supportContactsData)
+
+        const defaultIds = supportContactsData
+          .filter((contact) => contact.is_default)
+          .map((contact) => contact.id)
+
+        setSelectedSupportContactIds(defaultIds)
       } catch (err) {
         setError(err.message || 'Erro ao carregar cobranças')
       } finally {
@@ -239,6 +314,17 @@ export default function Charges() {
 
     if (user?.id) loadData()
   }, [user])
+
+  const selectedSupportContacts = useMemo(() => {
+    return supportContacts
+      .filter((contact) => selectedSupportContactIds.includes(contact.id))
+      .map((contact) => ({
+        id: contact.id,
+        label: contact.label,
+        name: contact.name,
+        phone: contact.phone,
+      }))
+  }, [supportContacts, selectedSupportContactIds])
 
   const installmentPreview = useMemo(() => {
     if (editingId) return []
@@ -250,6 +336,49 @@ export default function Charges() {
       installments: Number(form.installments),
     })
   }, [editingId, form.payment_type, form.amount, form.due_date, form.installments])
+
+  const recurringPreview = useMemo(() => {
+    if (editingId) return []
+    if (!isRecurringCharge) return []
+    if (form.payment_type !== 'single') return []
+    if (!form.due_date || !form.description || !form.amount) return []
+
+    const payloads = buildRecurringChargePayloads({
+      basePayload: {
+        user_id: user?.id,
+        client_id: form.client_id,
+        description: form.description.trim(),
+        amount: Number(form.amount),
+        due_date: form.due_date,
+        message_type: form.message_type,
+        payment_type: 'single',
+        original_amount: Number(form.amount),
+        installment_group_id: null,
+        installment_number: null,
+        installment_total: null,
+        payment_methods: form.payment_methods,
+        credit_card_enabled: form.credit_card_enabled,
+        support_whatsapp_contacts: selectedSupportContacts,
+      },
+      recurrenceMonths,
+    })
+
+    return payloads
+  }, [
+    editingId,
+    isRecurringCharge,
+    form.payment_type,
+    form.due_date,
+    form.description,
+    form.amount,
+    form.client_id,
+    form.message_type,
+    form.payment_methods,
+    form.credit_card_enabled,
+    selectedSupportContacts,
+    recurrenceMonths,
+    user?.id,
+  ])
 
   const enrichedCharges = useMemo(() => {
     return charges.map((charge) => ({
@@ -299,6 +428,14 @@ export default function Charges() {
   function resetForm() {
     setForm(createInitialForm())
     setEditingId(null)
+    setIsRecurringCharge(false)
+    setRecurrenceMonths(12)
+
+    const defaultIds = supportContacts
+      .filter((contact) => contact.is_default)
+      .map((contact) => contact.id)
+
+    setSelectedSupportContactIds(defaultIds)
   }
 
   function validateForm() {
@@ -306,6 +443,21 @@ export default function Charges() {
     if (!form.description.trim()) return 'Informe a descrição.'
     if (!form.amount || Number(form.amount) <= 0) return 'Informe um valor válido.'
     if (!form.due_date) return 'Informe a data de vencimento.'
+    if (!form.send_time) return 'Informe o horário de envio.'
+
+if (!isValidBusinessSendTime(form.send_time)) {
+  return 'O horário de envio deve estar entre 08:00 e 18:00.'
+}
+
+
+if (
+  !editingId &&
+  form.automation?.onDueDate &&
+  isToday(form.due_date) &&
+  form.send_time <= getCurrentInputTime()
+) { 
+  return 'Para cobranças com vencimento hoje, escolha um horário futuro entre 08:00 e 18:00.'
+}
     if (!form.message_type) return 'Selecione o tom da mensagem.'
 
     if (!Array.isArray(form.payment_methods) || form.payment_methods.length === 0) {
@@ -322,36 +474,192 @@ export default function Charges() {
       }
     }
 
+    if (!editingId && isRecurringCharge && form.payment_type !== 'single') {
+      return 'Cobrança recorrente mensal só pode ser usada em cobrança à vista.'
+    }
+
+    if (!editingId && isRecurringCharge) {
+  const months = Number(recurrenceMonths)
+
+  if (!months || months < 2) {
+    return 'Informe pelo menos 2 meses para cobrança recorrente.'
+  }
+
+  if (months > 60) {
+    return 'O limite máximo para cobrança recorrente é de 60 meses.'
+  }
+}
+
     return ''
   }
 
-  async function syncAutomation(charge) {
-    const rules = buildDefaultRules(form.automation)
+  async function handleAddSupportContact() {
+    if (!user?.id) return
 
-    await replaceAutomationForCharge({
-      user_id: user.id,
-      charge,
-      rules,
-    })
+    setSavingSupportContact(true)
+    resetMessages()
+
+    try {
+      const created = await createWhatsappSupportContact(user.id, {
+        label: newSupportContact.label,
+        name: newSupportContact.name,
+        phone: newSupportContact.phone,
+        is_default: false,
+      })
+
+      setSupportContacts((prev) => [...prev, created])
+      setSelectedSupportContactIds((prev) => [...prev, created.id])
+
+      setNewSupportContact({
+        label: '',
+        name: '',
+        phone: '',
+      })
+
+      setSuccess('Contato de dúvidas adicionado.')
+    } catch (err) {
+      setError(err.message || 'Erro ao cadastrar WhatsApp de dúvidas.')
+    } finally {
+      setSavingSupportContact(false)
+    }
   }
 
-    function shouldSendWhatsAppNow(charge) {
-  if (!form.automation?.onDueDate) return false
-  if (!charge?.due_date) return false
+  function getAutomationForCharge(charge) {
+  const automation = {
+    ...form.automation,
+  }
 
-  return charge.due_date <= getTodayInputDate()
+  const shouldSendOnDueDateNow =
+    Boolean(automation.onDueDate) &&
+    charge?.due_date &&
+    charge.due_date <= getTodayInputDate()
+
+  if (shouldSendOnDueDateNow) {
+    automation.onDueDate = false
+  }
+
+  return automation
 }
 
-  async function sendWhatsAppNowIfNeeded(charge) {
-    if (!shouldSendWhatsAppNow(charge)) return charge
-
-    const result = await sendChargeWhatsApp(charge.id, user.id)
-
-    return result?.charge || charge
+function getAutomationForCharge(charge) {
+  const automation = {
+    ...form.automation,
   }
 
-    async function createSingleCharge() {
-    const newCharge = await createCharge({
+  const shouldSendOnDueDateNow =
+    Boolean(automation.onDueDate) &&
+    charge?.due_date &&
+    charge.due_date <= getTodayInputDate()
+
+  if (shouldSendOnDueDateNow) {
+    automation.onDueDate = false
+  }
+
+  return automation
+}
+
+function getAutomationForCharge(charge) {
+  const automation = {
+    ...form.automation,
+  }
+
+  const shouldSendOnDueDateNow =
+    Boolean(automation.onDueDate) &&
+    charge?.due_date &&
+    charge.due_date <= getTodayInputDate()
+
+  if (shouldSendOnDueDateNow) {
+    automation.onDueDate = false
+  }
+
+  return automation
+}
+
+  function getAutomationForCharge(charge) {
+  const automation = {
+    ...form.automation,
+  }
+
+  const shouldSendOnDueDateNow =
+    Boolean(automation.onDueDate) &&
+    charge?.due_date &&
+    charge.due_date <= getTodayInputDate()
+
+  if (shouldSendOnDueDateNow) {
+    automation.onDueDate = false
+  }
+
+  return automation
+}
+
+async function syncAutomation(charge) {
+  const rules = buildDefaultRules(form.automation)
+
+  await replaceAutomationForCharge({
+    user_id: user.id,
+    charge,
+    rules,
+    send_time: form.send_time,
+  })
+}
+
+  function shouldSendWhatsAppNow(charge) {
+  if (!form.automation?.onDueDate) return false
+  if (!charge?.due_date) return false
+  if (!form.send_time) return false
+  if (!isValidBusinessSendTime(form.send_time)) return false
+
+  const currentTime = getCurrentInputTime()
+
+  return charge.due_date === getTodayInputDate() && form.send_time <= currentTime
+}
+
+  async function markDueDateAutomationAsSent(charge, whatsappResult) {
+  try {
+    const sentAt =
+      whatsappResult?.charge?.whatsapp_sent_at ||
+      charge?.whatsapp_sent_at ||
+      new Date().toISOString()
+
+    const providerMessageId =
+      whatsappResult?.charge?.whatsapp_message_sid ||
+      charge?.whatsapp_message_sid ||
+      whatsappResult?.message_sid ||
+      null
+
+    await supabase
+      .from('scheduled_messages')
+      .update({
+        status: 'sent',
+        sent_at: sentAt,
+        provider: 'twilio',
+        provider_message_id: providerMessageId,
+        error_message: null,
+        processing_started_at: null,
+        last_attempt_at: new Date().toISOString(),
+      })
+      .eq('user_id', user.id)
+      .eq('charge_id', charge.id)
+      .eq('status', 'pending')
+      .lte('scheduled_for', new Date().toISOString())
+  } catch (error) {
+    console.error('Erro ao marcar automação como enviada:', error)
+  }
+}
+
+async function sendWhatsAppNowIfNeeded(charge) {
+  if (!shouldSendWhatsAppNow(charge)) return charge
+
+  const result = await sendChargeWhatsApp(charge.id, user.id)
+  const updatedCharge = result?.charge || charge
+
+  await markDueDateAutomationAsSent(updatedCharge, result)
+
+  return updatedCharge
+}
+
+  function buildBasePayload() {
+    return {
       user_id: user.id,
       client_id: form.client_id,
       description: form.description.trim(),
@@ -365,7 +673,12 @@ export default function Charges() {
       installment_total: null,
       payment_methods: form.payment_methods,
       credit_card_enabled: form.credit_card_enabled,
-    })
+      support_whatsapp_contacts: selectedSupportContacts,
+    }
+  }
+
+  async function createSingleCharge() {
+    const newCharge = await createCharge(buildBasePayload())
 
     const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
 
@@ -379,6 +692,33 @@ export default function Charges() {
       shouldSendWhatsAppNow(chargeWithPix)
         ? 'Cobrança criada, pagamento gerado, automações programadas e WhatsApp enviado.'
         : 'Cobrança criada, pagamento gerado e automações programadas.',
+    )
+  }
+
+  async function createRecurringCharges() {
+    const payloads = buildRecurringChargePayloads({
+      basePayload: buildBasePayload(),
+      recurrenceMonths,
+    })
+
+    const createdCharges = []
+
+    for (const payload of payloads) {
+      const newCharge = await createCharge(payload)
+
+      const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
+
+      await syncAutomation(chargeWithPix)
+
+      const finalCharge = await sendWhatsAppNowIfNeeded(chargeWithPix)
+
+      createdCharges.push(finalCharge)
+    }
+
+    setCharges((current) => [...createdCharges, ...current])
+
+    setSuccess(
+      `Cobrança recorrente criada com sucesso: ${createdCharges.length} cobranças mensais com pagamento e automações programadas.`,
     )
   }
 
@@ -409,6 +749,7 @@ export default function Charges() {
         original_amount: originalAmount,
         payment_methods: form.payment_methods,
         credit_card_enabled: form.credit_card_enabled,
+        support_whatsapp_contacts: selectedSupportContacts,
       })
 
       const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
@@ -458,11 +799,19 @@ export default function Charges() {
           original_amount: existing?.original_amount || Number(form.amount),
           payment_methods: form.payment_methods,
           credit_card_enabled: form.credit_card_enabled,
+          support_whatsapp_contacts: selectedSupportContacts,
+          recurrence_group_id: existing?.recurrence_group_id || null,
+          recurrence_type: existing?.recurrence_type || 'single',
+          recurrence_frequency: existing?.recurrence_frequency || null,
+          recurrence_total: existing?.recurrence_total || null,
+          recurrence_number: existing?.recurrence_number || null,
+          recurrence_day: existing?.recurrence_day || null,
+          recurrence_created_from: existing?.recurrence_created_from || null,
         })
 
         const chargeWithPix = hasGeneratedPayment(updated)
-  ? updated
-  : await createPixPaymentForCharge(updated.id, user.id)
+          ? updated
+          : await createPixPaymentForCharge(updated.id, user.id)
 
         await syncAutomation(chargeWithPix)
 
@@ -475,6 +824,8 @@ export default function Charges() {
         setSuccess('Cobrança atualizada, pagamento gerado e automações recriadas.')
       } else if (form.payment_type === 'installment') {
         await createInstallmentCharges()
+      } else if (isRecurringCharge) {
+        await createRecurringCharges()
       } else {
         await createSingleCharge()
       }
@@ -511,12 +862,22 @@ export default function Charges() {
   function handleEdit(charge) {
     resetMessages()
     setEditingId(charge.id)
+    setIsRecurringCharge(false)
+
+    const contacts = Array.isArray(charge.support_whatsapp_contacts)
+      ? charge.support_whatsapp_contacts
+      : []
+
+    setSelectedSupportContactIds(
+      contacts.map((contact) => contact.id).filter(Boolean),
+    )
 
     setForm({
       client_id: charge.client?.id ?? charge.client_id ?? '',
       description: charge.description ?? '',
       amount: String(charge.amount ?? ''),
       due_date: charge.due_date ?? '',
+      send_time: DEFAULT_SEND_TIME,
       message_type: charge.message_type ?? 'friendly',
       payment_type: charge.payment_type ?? 'single',
       installments: charge.installment_total ?? 2,
@@ -543,37 +904,45 @@ export default function Charges() {
   }
 
   async function handleMarkAsPaid(id) {
-  resetMessages()
+    resetMessages()
 
-  try {
-    const updatedCharge = await markChargeAsPaid(id, user.id)
+    try {
+      const updatedCharge = await markChargeAsPaid(id, user.id)
 
-    setCharges((current) =>
-      current.map((charge) =>
-        charge.id === id ? { ...charge, ...updatedCharge } : charge,
-      ),
-    )
+      setCharges((current) =>
+        current.map((charge) =>
+          charge.id === id ? { ...charge, ...updatedCharge } : charge,
+        ),
+      )
 
-    setSuccess(
-  'Cobrança marcada como paga e lembretes pendentes foram cancelados. Se o cliente responder PAGO no WhatsApp, o robô confirmará a baixa.',
-)
-  } catch (err) {
-    setError(err.message || 'Erro ao atualizar cobrança')
+      setSuccess(
+        'Cobrança marcada como paga e lembretes pendentes foram cancelados. Se o cliente responder PAGO no WhatsApp, o robô confirmará a baixa.',
+      )
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar cobrança')
+    }
   }
-}
 
   function handleSend(charge) {
     if (!charge.client) return
 
-    const message = hasGeneratedPayment(charge)
-  ? buildPixMessage(charge)
-  : buildMessage(
-      charge.message_type || 'friendly',
-      charge.client.name,
-      charge.description,
-      charge.amount,
-      charge.due_date,
+    const supportContactsText = getSupportContactsText(
+      charge.support_whatsapp_contacts,
     )
+
+    const baseMessage = hasGeneratedPayment(charge)
+      ? buildPixMessage(charge)
+      : buildMessage(
+          charge.message_type || 'friendly',
+          charge.client.name,
+          charge.description,
+          charge.amount,
+          charge.due_date,
+        )
+
+    const message = supportContactsText
+      ? `${baseMessage}\n\nDúvidas? Fale com:\n${supportContactsText}`
+      : baseMessage
 
     openWhatsApp(charge.client.phone, message)
   }
@@ -724,13 +1093,20 @@ export default function Charges() {
 
                 <select
                   value={form.payment_type}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const nextPaymentType = e.target.value
+
                     setForm({
                       ...form,
-                      payment_type: e.target.value,
-                      installments: e.target.value === 'single' ? 2 : form.installments,
+                      payment_type: nextPaymentType,
+                      installments:
+                        nextPaymentType === 'single' ? 2 : form.installments,
                     })
-                  }
+
+                    if (nextPaymentType === 'installment') {
+                      setIsRecurringCharge(false)
+                    }
+                  }}
                   className="input"
                 >
                   <option value="single">Cobrança à vista</option>
@@ -763,7 +1139,7 @@ export default function Charges() {
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               Durante a edição, o sistema altera apenas esta cobrança específica.
-              Para criar novas parcelas, cancele a edição e cadastre uma nova cobrança parcelada.
+              Para criar novas parcelas ou recorrências, cancele a edição e cadastre uma nova cobrança.
             </div>
           )}
 
@@ -783,10 +1159,136 @@ export default function Charges() {
             />
 
             <p className="mt-2 text-xs text-slate-500">
-              Na cobrança parcelada, esta será a data da primeira parcela. As próximas serão criadas nos meses seguintes.
+              Na cobrança parcelada, esta será a data da primeira parcela. Na recorrente, será o dia base dos próximos meses.
             </p>
           </div>
         </div>
+
+        <div className="md:col-span-2">
+  <div className="mb-2 flex items-center gap-2">
+    <label className="text-sm font-semibold text-[#070D2D]">
+      Horário de envio
+    </label>
+    <InfoTooltip text={automationTips.sendTime} />
+  </div>
+
+  <input
+    type="time"
+    min="08:00"
+    max="18:00"
+    step="300"
+    value={form.send_time}
+    onChange={(e) =>
+      setForm({
+        ...form,
+        send_time: e.target.value,
+      })
+    }
+    className="input"
+  />
+
+  <p className="mt-2 text-xs text-slate-500">
+    Permitido somente entre 08:00 e 18:00, horário de Brasília. Fora desse período o envio não será permitido.
+  </p>
+</div>
+
+        {!editingId && form.payment_type === 'single' ? (
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-black text-[#070D2D]">
+                  Cobrança recorrente
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Opcional. Gere cobranças mensais com vencimento no mesmo dia.
+                </p>
+              </div>
+
+              <label className="inline-flex cursor-pointer items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isRecurringCharge}
+                  onChange={(event) => setIsRecurringCharge(event.target.checked)}
+                  className="h-5 w-5"
+                />
+
+                <span className="text-sm font-black text-[#070D2D]">
+                  Ativar recorrência
+                </span>
+              </label>
+            </div>
+
+            {isRecurringCharge ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <label>
+                  <span className="text-sm font-bold text-slate-600">
+                    Repetir por quantos meses?
+                  </span>
+
+                  <input
+  type="number"
+  min="2"
+  max="60"
+  step="1"
+  value={recurrenceMonths}
+  onChange={(event) => {
+    const value = Number(event.target.value)
+
+    if (!value) {
+      setRecurrenceMonths('')
+      return
+    }
+
+    setRecurrenceMonths(Math.max(2, Math.min(value, 60)))
+  }}
+  placeholder="Ex: 12"
+  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
+/>
+                </label>
+
+                <div className="rounded-2xl bg-violet-50 p-4 text-sm text-[#5B4BFF]">
+                  Exemplo: se o vencimento for dia 10, serão criadas cobranças para o dia 10 dos próximos meses.
+                  Se o mês não tiver esse dia, será usado o último dia do mês.
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {recurringPreview.length > 0 ? (
+          <div className="mt-5 rounded-3xl border border-violet-200 bg-violet-50 p-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-lg font-semibold text-[#070D2D]">
+                Prévia da recorrência
+              </h3>
+              <p className="text-sm text-slate-600">
+                O sistema criará {recurringPreview.length} cobranças mensais, cada uma com seu próprio pagamento e automação.
+              </p>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-violet-100 bg-white">
+              {recurringPreview.map((item) => (
+                <div
+                  key={item.recurrence_number}
+                  className="grid gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 md:grid-cols-3"
+                >
+                  <span className="font-semibold text-[#070D2D]">
+                    Recorrência {item.recurrence_number}/{item.recurrence_total}
+                  </span>
+
+                  <span className="text-slate-600">
+                    {formatCurrency(item.amount)}
+                  </span>
+
+                  <span className="text-slate-600">
+                    Vence em {formatDate(item.due_date)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {installmentPreview.length > 0 ? (
           <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-4">
@@ -821,6 +1323,106 @@ export default function Charges() {
             </div>
           </div>
         ) : null}
+
+        <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
+          <div>
+            <h3 className="text-lg font-black text-[#070D2D]">
+              WhatsApp para dúvidas
+            </h3>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Opcional. Escolha um ou mais contatos que aparecerão na mensagem como “Dúvidas? Fale com:”.
+            </p>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {supportContacts.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
+                Nenhum contato cadastrado ainda.
+              </div>
+            ) : (
+              supportContacts.map((contact) => (
+                <label
+                  key={contact.id}
+                  className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50"
+                >
+                  <div>
+                    <p className="font-bold text-[#070D2D]">{contact.label}</p>
+
+                    <p className="text-sm text-slate-500">
+                      {contact.name ? `${contact.name} · ` : ''}
+                      +{contact.phone}
+                    </p>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={selectedSupportContactIds.includes(contact.id)}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+
+                      setSelectedSupportContactIds((prev) => {
+                        if (checked) return [...prev, contact.id]
+                        return prev.filter((id) => id !== contact.id)
+                      })
+                    }}
+                    className="h-5 w-5"
+                  />
+                </label>
+              ))
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <input
+              type="text"
+              value={newSupportContact.label}
+              onChange={(event) =>
+                setNewSupportContact((prev) => ({
+                  ...prev,
+                  label: event.target.value,
+                }))
+              }
+              placeholder="Ex: Financeiro"
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
+            />
+
+            <input
+              type="text"
+              value={newSupportContact.name}
+              onChange={(event) =>
+                setNewSupportContact((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
+              }
+              placeholder="Nome"
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
+            />
+
+            <input
+              type="text"
+              value={newSupportContact.phone}
+              onChange={(event) =>
+                setNewSupportContact((prev) => ({
+                  ...prev,
+                  phone: event.target.value,
+                }))
+              }
+              placeholder="WhatsApp com DDD"
+              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddSupportContact}
+            disabled={savingSupportContact || !newSupportContact.phone}
+            className="mt-3 rounded-2xl bg-[#5B4BFF] px-5 py-3 text-sm font-black text-white hover:bg-[#4A3BE8] disabled:opacity-60"
+          >
+            {savingSupportContact ? 'Salvando...' : 'Adicionar contato'}
+          </button>
+        </div>
 
         <div className="mt-5 rounded-3xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-4">
           <div className="flex items-start gap-3">
@@ -919,7 +1521,9 @@ export default function Charges() {
                 ? 'Atualizar cobrança'
                 : form.payment_type === 'installment'
                   ? 'Salvar parcelamento'
-                  : 'Salvar cobrança'}
+                  : isRecurringCharge
+                    ? 'Salvar recorrência'
+                    : 'Salvar cobrança'}
           </button>
 
           {editingId ? (
@@ -1028,11 +1632,18 @@ export default function Charges() {
                           </span>
                         ) : null}
 
+                        {Array.isArray(charge.support_whatsapp_contacts) &&
+                        charge.support_whatsapp_contacts.length > 0 ? (
+                          <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
+                            Contato de dúvidas
+                          </span>
+                        ) : null}
+
                         {hasGeneratedPayment(charge) ? (
-  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-    Pagamento gerado
-  </span>
-) : null}
+                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            Pagamento gerado
+                          </span>
+                        ) : null}
                       </div>
 
                       <p className="mt-1 text-sm text-slate-600">
@@ -1045,6 +1656,16 @@ export default function Charges() {
                           {formatCurrency(charge.amount)}
                         </strong>
                       </p>
+
+                      {Array.isArray(charge.support_whatsapp_contacts) &&
+                      charge.support_whatsapp_contacts.length > 0 ? (
+                        <div className="mt-2 rounded-2xl bg-violet-50 p-3 text-xs text-violet-700">
+                          <strong>Dúvidas? Fale com:</strong>
+                          <pre className="mt-1 whitespace-pre-wrap font-sans">
+                            {getSupportContactsText(charge.support_whatsapp_contacts)}
+                          </pre>
+                        </div>
+                      ) : null}
 
                       {charge.payment_type === 'installment' ? (
                         <p className="mt-1 text-xs text-slate-500">
@@ -1063,22 +1684,22 @@ export default function Charges() {
 
                           <p className="mt-1 text-xs text-slate-500">
                             {charge.credit_card_enabled
-  ? 'O WhatsApp enviará o link seguro do Mercado Pago para o cliente escolher Pix ou cartão.'
-  : 'O WhatsApp enviará o código Pix copia e cola junto com a cobrança.'}
+                              ? 'O WhatsApp enviará o link seguro do Mercado Pago para o cliente escolher Pix ou cartão.'
+                              : 'O WhatsApp enviará o código Pix copia e cola junto com a cobrança.'}
                           </p>
 
                           <div className="mt-3 flex flex-wrap gap-2">
                             {charge.pix_qr_code ? (
-  <button
-    type="button"
-    onClick={() =>
-      navigator.clipboard.writeText(charge.pix_qr_code)
-    }
-    className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
-  >
-    Copiar Pix
-  </button>
-) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigator.clipboard.writeText(charge.pix_qr_code)
+                                }
+                                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
+                              >
+                                Copiar Pix
+                              </button>
+                            ) : null}
 
                             {charge.payment_url ? (
                               <a
@@ -1110,8 +1731,8 @@ export default function Charges() {
                           {generatingPixId === charge.id
                             ? 'Gerando...'
                             : hasGeneratedPayment(charge)
-  ? 'Pagamento gerado'
-  : 'Gerar pagamento'}
+                              ? 'Pagamento gerado'
+                              : 'Gerar pagamento'}
                         </button>
                       ) : null}
 
@@ -1165,4 +1786,4 @@ export default function Charges() {
       </div>
     </div>
   )
-  }
+}

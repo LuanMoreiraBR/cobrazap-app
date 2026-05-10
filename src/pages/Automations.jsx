@@ -94,18 +94,72 @@ export default function Automations() {
   const [period, setPeriod] = useState('month')
   const [referenceDate, setReferenceDate] = useState(getTodayInputDate())
 
-  async function loadItems() {
-    try {
-      if (!user?.id) return
+  async function reconcileAlreadySentMessages(data = []) {
+  const pendingButAlreadySent = data.filter((item) => {
+    return (
+      item.status === 'pending' &&
+      item.charge?.whatsapp_sent_at &&
+      item.charge?.whatsapp_message_sid
+    )
+  })
 
-      const data = await getScheduledMessages(user.id)
-      setItems(data || [])
-    } catch (err) {
-      setError(err.message || 'Erro ao carregar automações')
-    } finally {
-      setLoading(false)
-    }
+  if (pendingButAlreadySent.length === 0) {
+    return data
   }
+
+  await Promise.all(
+    pendingButAlreadySent.map((item) =>
+      supabase
+        .from('scheduled_messages')
+        .update({
+          status: 'sent',
+          sent_at: item.charge.whatsapp_sent_at,
+          provider: 'twilio',
+          provider_message_id: item.charge.whatsapp_message_sid,
+          error_message: null,
+          processing_started_at: null,
+          last_attempt_at: new Date().toISOString(),
+        })
+        .eq('id', item.id)
+        .eq('user_id', user.id)
+        .eq('status', 'pending'),
+    ),
+  )
+
+  return data.map((item) => {
+    if (
+      item.status === 'pending' &&
+      item.charge?.whatsapp_sent_at &&
+      item.charge?.whatsapp_message_sid
+    ) {
+      return {
+        ...item,
+        status: 'sent',
+        sent_at: item.charge.whatsapp_sent_at,
+        provider: 'twilio',
+        provider_message_id: item.charge.whatsapp_message_sid,
+        error_message: null,
+      }
+    }
+
+    return item
+  })
+}
+
+async function loadItems() {
+  try {
+    if (!user?.id) return
+
+    const data = await getScheduledMessages(user.id)
+    const reconciledData = await reconcileAlreadySentMessages(data || [])
+
+    setItems(reconciledData || [])
+  } catch (err) {
+    setError(err.message || 'Erro ao carregar automações')
+  } finally {
+    setLoading(false)
+  }
+}
 
   useEffect(() => {
     loadItems()

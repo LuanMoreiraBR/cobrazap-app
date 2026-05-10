@@ -27,16 +27,24 @@ export async function createCharge({
   status = 'pendente',
   message_type = 'friendly',
 
-  // Cobrança única ou parcelada
   payment_type = 'single',
   installment_group_id = null,
   installment_number = null,
   installment_total = null,
   original_amount = null,
 
-  // Métodos de pagamento
   payment_methods = ['pix'],
   credit_card_enabled = false,
+
+  support_whatsapp_contacts = [],
+
+  recurrence_group_id = null,
+  recurrence_type = 'single',
+  recurrence_frequency = null,
+  recurrence_total = null,
+  recurrence_number = null,
+  recurrence_day = null,
+  recurrence_created_from = null,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -58,6 +66,16 @@ export async function createCharge({
 
         payment_methods,
         credit_card_enabled,
+
+        support_whatsapp_contacts,
+
+        recurrence_group_id,
+        recurrence_type,
+        recurrence_frequency,
+        recurrence_total,
+        recurrence_number,
+        recurrence_day,
+        recurrence_created_from,
       },
     ])
     .select(`
@@ -84,16 +102,24 @@ export async function updateCharge({
   status,
   message_type = 'friendly',
 
-  // Cobrança única ou parcelada
   payment_type = 'single',
   installment_group_id = null,
   installment_number = null,
   installment_total = null,
   original_amount = null,
 
-  // Métodos de pagamento
   payment_methods = ['pix'],
   credit_card_enabled = false,
+
+  support_whatsapp_contacts = [],
+
+  recurrence_group_id = null,
+  recurrence_type = 'single',
+  recurrence_frequency = null,
+  recurrence_total = null,
+  recurrence_number = null,
+  recurrence_day = null,
+  recurrence_created_from = null,
 }) {
   const { data, error } = await supabase
     .from('charges')
@@ -113,6 +139,16 @@ export async function updateCharge({
 
       payment_methods,
       credit_card_enabled,
+
+      support_whatsapp_contacts,
+
+      recurrence_group_id,
+      recurrence_type,
+      recurrence_frequency,
+      recurrence_total,
+      recurrence_number,
+      recurrence_day,
+      recurrence_created_from,
     })
     .eq('id', id)
     .eq('user_id', user_id)
@@ -206,6 +242,7 @@ export async function createPixPaymentForCharge(chargeId, userId) {
 
   return data.charge
 }
+
 export async function sendChargeWhatsApp(chargeId, userId) {
   const { data, error } = await supabase.functions.invoke(
     'send-charge-whatsapp',

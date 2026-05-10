@@ -7,6 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+const FREE_TRIAL_MESSAGE_LIMIT = 10
+const DEFAULT_CHARGE_TEMPLATE_SID = 'HXb61d044c9da80ac9e3554e3a04b485c2'
+const DEFAULT_CHARGE_WITH_CONTACT_TEMPLATE_SID =
+  'HX6357059b6045c84bd165826e4df981d9'
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -17,35 +22,18 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-function formatCurrencyBRL(amount: number | string | null | undefined) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(Number(amount || 0))
-}
-
-function cleanDescription(description: string | null | undefined) {
-  return String(description || 'cobrança')
-    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
-    .trim()
-}
-
-function buildChargeTemplateVariables(charge: any) {
-  const client = Array.isArray(charge?.client) ? charge.client[0] : charge?.client
-
-  return {
-    '1': client?.name || 'cliente',
-    '2': cleanDescription(charge?.description),
-    '3': formatCurrencyBRL(charge?.amount),
-    '4': formatDateBR(charge?.due_date),
-    '5': charge?.payment_url || '',
-  }
-}
-
 function getEnv(name: string) {
   const value = Deno.env.get(name)
-  if (!value) throw new Error(`Variável ${name} não configurada.`)
+
+  if (!value) {
+    throw new Error(`Variável ${name} não configurada.`)
+  }
+
   return value
+}
+
+function getOptionalEnv(name: string, fallback = '') {
+  return Deno.env.get(name) || fallback
 }
 
 function onlyDigits(value: string | null | undefined) {
@@ -62,11 +50,11 @@ function formatWhatsAppTo(phone: string | null | undefined) {
   return `whatsapp:+${phoneWithCountryCode}`
 }
 
-function formatCurrencyBR(value: number) {
+function formatCurrencyBRL(amount: number | string | null | undefined) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(Number(value || 0))
+  }).format(Number(amount || 0))
 }
 
 function formatDateBR(dateString: string | null | undefined) {
@@ -77,75 +65,12 @@ function formatDateBR(dateString: string | null | undefined) {
   return new Intl.DateTimeFormat('pt-BR').format(date)
 }
 
-function getClientName(charge: any) {
-  return charge?.client?.name || 'cliente'
+function cleanDescription(description: string | null | undefined) {
+  return String(description || 'cobrança')
+    .replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '')
+    .replace(/\s*-\s*Recorrência\s+\d+\/\d+$/i, '')
+    .trim()
 }
-
-function getChargeDescription(charge: any) {
-  const description = charge?.description || 'cobrança'
-
-  if (charge?.payment_type !== 'installment') {
-    return description
-  }
-
-  return description.replace(/\s*-\s*Parcela\s+\d+\/\d+$/i, '').trim()
-}
-
-function getInstallmentText(charge: any) {
-  if (charge?.payment_type !== 'installment') return ''
-
-  const number = charge?.installment_number || '-'
-  const total = charge?.installment_total || '-'
-
-  return `Parcela ${number}/${total}`
-}
-
-function buildChargeWhatsAppMessage(charge: any) {
-  const clientName = getClientName(charge)
-  const description = getChargeDescription(charge)
-  const amount = formatCurrencyBR(Number(charge?.amount || 0))
-  const dueDate = formatDateBR(charge?.due_date)
-  const installmentText = getInstallmentText(charge)
-  const paymentUrl = charge?.payment_url || ''
-  const pix = charge?.pix_qr_code || ''
-  const creditCardEnabled = charge?.credit_card_enabled === true
-
-  const paymentInstructions = creditCardEnabled
-    ? `Para pagar, acesse o link seguro do Mercado Pago abaixo.
-
-Você poderá escolher Pix ou cartão de crédito:
-
-${paymentUrl || 'Link de pagamento indisponível no momento.'}`
-    : `Para pagar via Pix, use o código copia e cola abaixo:
-
-${pix || 'Pix indisponível no momento.'}
-
-${paymentUrl ? `Link de pagamento:\n${paymentUrl}` : ''}`
-
-  if (charge?.payment_type === 'installment') {
-    return `Olá ${clientName}, tudo bem?
-
-Esta é a ${installmentText} da sua dívida.
-
-Descrição: ${description}
-Valor da parcela: ${amount}
-Vencimento: ${dueDate}
-
-${paymentInstructions}
-
-Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
-  }
-
-  return `Olá ${clientName}, tudo bem?
-
-Passando para lembrar sobre a cobrança referente a "${description}", no valor de ${amount}, com vencimento em ${dueDate}.
-
-${paymentInstructions}
-
-Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
-}
-
-const FREE_TRIAL_MESSAGE_LIMIT = 10
 
 function getCurrentYearMonth() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -155,6 +80,72 @@ function getCurrentYearMonth() {
   })
     .format(new Date())
     .slice(0, 7)
+}
+
+function getClientFromCharge(charge: any) {
+  return Array.isArray(charge?.client) ? charge.client[0] : charge?.client
+}
+
+function getSupportContactsText(charge: any) {
+  const contacts = Array.isArray(charge?.support_whatsapp_contacts)
+    ? charge.support_whatsapp_contacts
+    : []
+
+  if (!contacts.length) return ''
+
+  return contacts
+    .map((contact: any) => {
+      const name = contact.name || contact.label || 'Atendimento'
+      const phone = onlyDigits(contact.phone)
+      return `${name}: +${phone}`
+    })
+    .join('\n')
+}
+
+function buildChargeTemplateVariables(charge: any) {
+  const client = getClientFromCharge(charge)
+  const supportContactsText = getSupportContactsText(charge)
+
+  const variables: Record<string, string> = {
+    '1': String(client?.name || 'cliente'),
+    '2': cleanDescription(charge?.description),
+    '3': formatCurrencyBRL(charge?.amount),
+    '4': formatDateBR(charge?.due_date),
+    '5': String(charge?.payment_url || ''),
+  }
+
+  if (supportContactsText) {
+    variables['6'] = supportContactsText
+  }
+
+  return variables
+}
+
+function buildChargeWhatsAppMessage(charge: any) {
+  const client = getClientFromCharge(charge)
+  const clientName = client?.name || 'cliente'
+  const description = cleanDescription(charge?.description)
+  const amount = formatCurrencyBRL(charge?.amount)
+  const dueDate = formatDateBR(charge?.due_date)
+  const paymentUrl = charge?.payment_url || ''
+  const pix = charge?.pix_qr_code || ''
+  const supportContactsText = getSupportContactsText(charge)
+
+  const paymentInstructions = paymentUrl
+    ? `Para pagar, acesse o link seguro:\n${paymentUrl}`
+    : `Para pagar via Pix, use o código copia e cola abaixo:\n${pix || 'Pix indisponível no momento.'}`
+
+  const supportBlock = supportContactsText
+    ? `\n\nDúvidas? Fale com:\n${supportContactsText}`
+    : ''
+
+  return `Olá ${clientName}, tudo bem?
+
+Você tem uma cobrança referente a ${description}, no valor de ${amount}, com vencimento em ${dueDate}.
+
+${paymentInstructions}${supportBlock}
+
+Após pagar, responda PAGO nesta conversa para consultar a confirmação.`
 }
 
 async function logPlatformEvent({
@@ -202,6 +193,22 @@ async function logPlatformEvent({
   }
 }
 
+async function getExtraMessageCredits(supabase: any, userId: string) {
+  const { data, error } = await supabase
+    .from('message_credit_purchases')
+    .select('remaining')
+    .eq('user_id', userId)
+    .eq('status', 'paid')
+    .gt('remaining', 0)
+
+  if (error) throw error
+
+  return (data || []).reduce(
+    (total: number, item: any) => total + Number(item.remaining || 0),
+    0,
+  )
+}
+
 async function canSendMessageForUser(supabase: any, userId: string) {
   const yearMonth = getCurrentYearMonth()
 
@@ -221,11 +228,14 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     (!subscription.current_period_end ||
       new Date(subscription.current_period_end) > new Date())
 
-  const maxMessages = hasActivePlan
-    ? Number(subscription.plan?.max_messages_per_month || 0)
+  const planMessageLimit = hasActivePlan
+    ? Number(subscription?.plan?.max_messages_per_month || 0)
     : FREE_TRIAL_MESSAGE_LIMIT
 
-  if (!maxMessages) {
+  const extraCredits = await getExtraMessageCredits(supabase, userId)
+  const totalMessageLimit = planMessageLimit + extraCredits
+
+  if (!totalMessageLimit) {
     return {
       allowed: true,
       reason: 'Plano ilimitado.',
@@ -243,11 +253,11 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 
   const messagesSent = Number(usage?.messages_sent || 0)
 
-  if (messagesSent >= maxMessages) {
+  if (messagesSent >= totalMessageLimit) {
     return {
       allowed: false,
       reason: hasActivePlan
-        ? `Limite mensal de mensagens atingido: ${messagesSent}/${maxMessages}.`
+        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}.`
         : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens grátis. Escolha um plano para continuar enviando cobranças.`,
     }
   }
@@ -274,8 +284,8 @@ async function incrementMessageUsage({
   })
 
   if (error) {
-    console.error('Erro ao contabilizar uso mensal:', error)
-    throw error
+    console.error('Erro ao contabilizar uso da mensagem:', error)
+    throw new Error('Mensagem enviada, mas houve erro ao contabilizar uso.')
   }
 }
 
@@ -291,14 +301,27 @@ async function sendWithTwilio({
   const accountSid = getEnv('TWILIO_ACCOUNT_SID')
   const authToken = getEnv('TWILIO_AUTH_TOKEN')
   const messagingServiceSid = getEnv('TWILIO_MESSAGING_SERVICE_SID')
-  const chargeTemplateSid = Deno.env.get('TWILIO_CHARGE_TEMPLATE_SID') || ''
+
+  const chargeTemplateSid = getOptionalEnv(
+    'TWILIO_CHARGE_TEMPLATE_SID',
+    DEFAULT_CHARGE_TEMPLATE_SID,
+  )
+
+  const chargeWithContactTemplateSid = getOptionalEnv(
+    'TWILIO_CHARGE_WITH_CONTACT_TEMPLATE_SID',
+    DEFAULT_CHARGE_WITH_CONTACT_TEMPLATE_SID,
+  )
+
+  const selectedTemplateSid = contentVariables?.['6']
+    ? chargeWithContactTemplateSid
+    : chargeTemplateSid
 
   const body = new URLSearchParams()
   body.set('MessagingServiceSid', messagingServiceSid)
   body.set('To', to)
 
-  if (chargeTemplateSid && contentVariables) {
-    body.set('ContentSid', chargeTemplateSid)
+  if (selectedTemplateSid && contentVariables) {
+    body.set('ContentSid', selectedTemplateSid)
     body.set('ContentVariables', JSON.stringify(contentVariables))
   } else {
     body.set('Body', text)
@@ -324,7 +347,10 @@ async function sendWithTwilio({
     throw new Error(`Erro Twilio: ${JSON.stringify(data)}`)
   }
 
-  return data
+  return {
+    ...data,
+    selected_template_sid: selectedTemplateSid,
+  }
 }
 
 Deno.serve(async (req) => {
@@ -337,19 +363,16 @@ Deno.serve(async (req) => {
   }
 
   let supabase: any = null
-  let payload: any = {}
-  let logUserId: string | null = null
-  let logChargeId: string | null = null
+  let chargeId: string | null = null
+  let userId: string | null = null
 
   try {
-    payload = await req.json()
+    const body = await req.json().catch(() => ({}))
 
-    const { charge_id, user_id } = payload
+    chargeId = String(body.charge_id || '')
+    userId = String(body.user_id || '')
 
-    logUserId = user_id || null
-    logChargeId = charge_id || null
-
-    if (!charge_id || !user_id) {
+    if (!chargeId || !userId) {
       return jsonResponse(
         {
           ok: false,
@@ -368,12 +391,12 @@ Deno.serve(async (req) => {
       supabase,
       provider: 'twilio',
       eventType: 'manual_whatsapp_charge_requested',
-      userId: user_id,
+      userId,
       relatedTable: 'charges',
-      relatedId: charge_id,
+      relatedId: chargeId,
       status: 'info',
       message: 'Solicitação de envio manual de cobrança por WhatsApp.',
-      requestPayload: payload,
+      requestPayload: body,
     })
 
     const { data: charge, error: chargeError } = await supabase
@@ -388,24 +411,11 @@ Deno.serve(async (req) => {
         )
       `,
       )
-      .eq('id', charge_id)
-      .eq('user_id', user_id)
+      .eq('id', chargeId)
+      .eq('user_id', userId)
       .single()
 
     if (chargeError || !charge) {
-      await logPlatformEvent({
-        supabase,
-        provider: 'twilio',
-        eventType: 'manual_whatsapp_charge_failed',
-        userId: user_id,
-        relatedTable: 'charges',
-        relatedId: charge_id,
-        status: 'error',
-        message: 'Cobrança não encontrada para envio manual.',
-        requestPayload: payload,
-        errorMessage: chargeError?.message || 'Cobrança não encontrada.',
-      })
-
       return jsonResponse(
         {
           ok: false,
@@ -416,18 +426,6 @@ Deno.serve(async (req) => {
     }
 
     if (charge.status === 'pago') {
-      await logPlatformEvent({
-        supabase,
-        provider: 'twilio',
-        eventType: 'manual_whatsapp_charge_ignored',
-        userId: user_id,
-        relatedTable: 'charges',
-        relatedId: charge_id,
-        status: 'ignored',
-        message: 'Cobrança já estava paga. Envio manual ignorado.',
-        requestPayload: payload,
-      })
-
       return jsonResponse(
         {
           ok: false,
@@ -437,21 +435,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    const to = formatWhatsAppTo(charge?.client?.phone)
+    const to = formatWhatsAppTo(getClientFromCharge(charge)?.phone)
 
     if (!to) {
-      await logPlatformEvent({
-        supabase,
-        provider: 'twilio',
-        eventType: 'manual_whatsapp_charge_failed',
-        userId: user_id,
-        relatedTable: 'charges',
-        relatedId: charge_id,
-        status: 'error',
-        message: 'Cliente sem telefone válido.',
-        requestPayload: payload,
-      })
-
       return jsonResponse(
         {
           ok: false,
@@ -461,19 +447,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (!charge.pix_qr_code && !charge.payment_url) {
-      await logPlatformEvent({
-        supabase,
-        provider: 'twilio',
-        eventType: 'manual_whatsapp_charge_failed',
-        userId: user_id,
-        relatedTable: 'charges',
-        relatedId: charge_id,
-        status: 'error',
-        message: 'Cobrança sem Pix ou link de pagamento.',
-        requestPayload: payload,
-      })
-
+    if (!charge.payment_url && !charge.pix_qr_code) {
       return jsonResponse(
         {
           ok: false,
@@ -483,21 +457,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    const permission = await canSendMessageForUser(supabase, user_id)
+    const permission = await canSendMessageForUser(supabase, userId)
 
     if (!permission.allowed) {
-      await logPlatformEvent({
-        supabase,
-        provider: 'twilio',
-        eventType: 'manual_whatsapp_charge_blocked_by_billing',
-        userId: user_id,
-        relatedTable: 'charges',
-        relatedId: charge_id,
-        status: 'ignored',
-        message: permission.reason,
-        requestPayload: payload,
-      })
-
       return jsonResponse(
         {
           ok: false,
@@ -508,47 +470,36 @@ Deno.serve(async (req) => {
       )
     }
 
-    const message = buildChargeWhatsAppMessage(charge)
+    const fallbackMessage = buildChargeWhatsAppMessage(charge)
+    const templateVariables = buildChargeTemplateVariables(charge)
 
     const twilioMessage = await sendWithTwilio({
-      to,
-      text: message,
-      contentVariables: buildChargeTemplateVariables(charge),
-    })
+  to,
+  text: fallbackMessage,
+  contentVariables: templateVariables,
+})
 
-    let usageIncrementError: string | null = null
+await incrementMessageUsage({
+  supabase,
+  userId,
+  chargeId: charge.id,
+})
 
-try {
-  await incrementMessageUsage({
-    supabase,
-    userId: user_id,
-    chargeId: charge.id,
-  })
-} catch (usageError) {
-  usageIncrementError =
-    usageError instanceof Error
-      ? usageError.message
-      : 'Erro ao contabilizar uso da mensagem.'
-
-  console.error('Mensagem enviada, mas houve erro ao contabilizar uso:', usageError)
-
-  await logPlatformEvent({
-    supabase,
+await supabase
+  .from('scheduled_messages')
+  .update({
+    status: 'sent',
+    sent_at: new Date().toISOString(),
     provider: 'twilio',
-    eventType: 'manual_whatsapp_usage_increment_failed',
-    userId: user_id,
-    relatedTable: 'charges',
-    relatedId: charge.id,
-    status: 'error',
-    message:
-      'Mensagem enviada pela Twilio, mas houve erro ao contabilizar uso mensal.',
-    requestPayload: {
-      charge_id,
-      user_id,
-    },
-    errorMessage: usageIncrementError,
+    provider_message_id: twilioMessage.sid,
+    error_message: null,
+    processing_started_at: null,
+    last_attempt_at: new Date().toISOString(),
   })
-}
+  .eq('user_id', userId)
+  .eq('charge_id', charge.id)
+  .eq('status', 'pending')
+  .lte('scheduled_for', new Date().toISOString())
 
     const { data: updatedCharge, error: updateError } = await supabase
       .from('charges')
@@ -579,49 +530,41 @@ try {
       supabase,
       provider: 'twilio',
       eventType: 'manual_whatsapp_charge_sent',
-      userId: user_id,
+      userId,
       relatedTable: 'charges',
       relatedId: charge.id,
       status: 'success',
-      message: 'Cobrança enviada manualmente por WhatsApp.',
-      requestPayload: {
-        charge_id,
-        user_id,
-        to,
-      },
+      message: 'Cobrança enviada manualmente por WhatsApp usando template aprovado.',
       responsePayload: {
-  sid: twilioMessage.sid,
-  status: twilioMessage.status,
-  update_error: updateError?.message || null,
-  usage_increment_error: usageIncrementError,
-},
+        sid: twilioMessage.sid,
+        status: twilioMessage.status,
+        to,
+        content_sid: twilioMessage.selected_template_sid,
+        has_support_contacts: Boolean(templateVariables['6']),
+      },
     })
 
     return jsonResponse({
-  ok: true,
-  message_sid: twilioMessage.sid,
-  status: twilioMessage.status,
-  usage_increment_error: usageIncrementError,
-  charge: updatedCharge || charge,
-})
+      ok: true,
+      message_sid: twilioMessage.sid,
+      status: twilioMessage.status,
+      charge: updatedCharge || charge,
+    })
   } catch (error) {
     const errorMessage =
-      error instanceof Error
-        ? error.message
-        : 'Erro ao enviar cobrança por WhatsApp.'
+      error instanceof Error ? error.message : 'Erro ao enviar cobrança por WhatsApp.'
 
     console.error('Erro ao enviar cobrança por WhatsApp:', error)
 
     await logPlatformEvent({
       supabase,
       provider: 'twilio',
-      eventType: 'manual_whatsapp_charge_failed',
-      userId: logUserId,
-      relatedTable: logChargeId ? 'charges' : null,
-      relatedId: logChargeId,
+      eventType: 'manual_whatsapp_charge_error',
+      userId,
+      relatedTable: 'charges',
+      relatedId: chargeId,
       status: 'error',
-      message: 'Erro inesperado ao enviar cobrança manual por WhatsApp.',
-      requestPayload: payload,
+      message: 'Erro ao enviar cobrança por WhatsApp.',
       errorMessage,
     })
 
