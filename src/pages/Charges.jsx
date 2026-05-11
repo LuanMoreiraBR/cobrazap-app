@@ -14,9 +14,11 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
+
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../services/supabaseClient'
 import { getClients } from '../services/clientsService'
+
 import {
   createCharge,
   createPixPaymentForCharge,
@@ -26,17 +28,26 @@ import {
   sendChargeWhatsApp,
   updateCharge,
 } from '../services/chargesService'
+
 import {
   buildDefaultRules,
   replaceAutomationForCharge,
 } from '../services/automationService'
+
 import {
   createWhatsappSupportContact,
+  deleteWhatsappSupportContact,
   getWhatsappSupportContacts,
 } from '../services/whatsappSupportContactsService'
+
 import { buildRecurringChargePayloads } from '../utils/recurringChargesHelper'
 import { formatCurrency, formatDate } from '../utils/format'
 import { buildMessage, buildPixMessage, openWhatsApp } from '../utils/whatsapp'
+
+import {
+  exportChargesToExcel,
+  exportChargesToPdf,
+} from '../utils/reportExport'
 
 function getTodayInputDate() {
   const now = new Date()
@@ -130,16 +141,19 @@ function generateInstallments({ amount, dueDate, installments }) {
 }
 
 const automationTips = {
-  oneMonthBefore: 'Programa uma mensagem para 30 dias antes da data de vencimento.',
-  fifteenDaysBefore: 'Programa uma mensagem para 15 dias antes da data de vencimento.',
-  fiveDaysBefore: 'Programa uma mensagem para 5 dias antes da data de vencimento.',
+  oneMonthBefore:
+    'Programa uma mensagem para 30 dias antes da data de vencimento.',
+  fifteenDaysBefore:
+    'Programa uma mensagem para 15 dias antes da data de vencimento.',
+  fiveDaysBefore:
+    'Programa uma mensagem para 5 dias antes da data de vencimento.',
   onDueDate: 'Programa uma mensagem para o próprio dia do vencimento.',
   afterDueDays:
     'Informe quantos dias depois do vencimento o sistema deve enviar uma nova cobrança. Exemplo: 3 envia 3 dias após vencer.',
   dueDate:
     'Essa é a data base da cobrança. Todos os lembretes automáticos serão calculados a partir dela.',
   sendTime:
-    'Escolha o horário em que o sistema poderá enviar o WhatsApp. Permitido somente entre 08:00 e 18:00.',
+    'Escolha o horário em que o sistema poderá enviar o WhatsApp. Permitido somente entre 08:00 e 22:00.',
   paymentMethod:
     'Escolha se esta cobrança aceitará apenas Pix ou Pix com opção de pagamento por cartão através do link do Mercado Pago.',
 }
@@ -151,6 +165,7 @@ function InfoTooltip({ text }) {
         size={15}
         className="cursor-help text-slate-400 transition hover:text-[#5B4BFF]"
       />
+
       <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-2xl bg-[#070D2D] px-3 py-2 text-xs font-medium leading-relaxed text-white shadow-lg group-hover:block">
         {text}
       </span>
@@ -183,7 +198,7 @@ function createInitialForm() {
 function getStatusLabel(status) {
   if (status === 'pago') return 'Pago'
   if (status === 'atrasado') return 'Atrasado'
-  return 'Pendente'
+  return 'Em aberto'
 }
 
 function getStatusStyle(status) {
@@ -335,7 +350,13 @@ export default function Charges() {
       dueDate: form.due_date,
       installments: Number(form.installments),
     })
-  }, [editingId, form.payment_type, form.amount, form.due_date, form.installments])
+  }, [
+    editingId,
+    form.payment_type,
+    form.amount,
+    form.due_date,
+    form.installments,
+  ])
 
   const recurringPreview = useMemo(() => {
     if (editingId) return []
@@ -343,7 +364,7 @@ export default function Charges() {
     if (form.payment_type !== 'single') return []
     if (!form.due_date || !form.description || !form.amount) return []
 
-    const payloads = buildRecurringChargePayloads({
+    return buildRecurringChargePayloads({
       basePayload: {
         user_id: user?.id,
         client_id: form.client_id,
@@ -362,8 +383,6 @@ export default function Charges() {
       },
       recurrenceMonths,
     })
-
-    return payloads
   }, [
     editingId,
     isRecurringCharge,
@@ -411,8 +430,12 @@ export default function Charges() {
     })
   }, [enrichedCharges, statusFilter, search])
 
-  const pending = enrichedCharges.filter((item) => item.computedStatus === 'pendente')
-  const overdue = enrichedCharges.filter((item) => item.computedStatus === 'atrasado')
+  const pending = enrichedCharges.filter(
+    (item) => item.computedStatus === 'pendente',
+  )
+  const overdue = enrichedCharges.filter(
+    (item) => item.computedStatus === 'atrasado',
+  )
   const paid = enrichedCharges.filter((item) => item.computedStatus === 'pago')
 
   const totalOpen = [...pending, ...overdue].reduce(
@@ -441,26 +464,31 @@ export default function Charges() {
   function validateForm() {
     if (!form.client_id) return 'Selecione um cliente.'
     if (!form.description.trim()) return 'Informe a descrição.'
-    if (!form.amount || Number(form.amount) <= 0) return 'Informe um valor válido.'
+    if (!form.amount || Number(form.amount) <= 0) {
+      return 'Informe um valor válido.'
+    }
     if (!form.due_date) return 'Informe a data de vencimento.'
     if (!form.send_time) return 'Informe o horário de envio.'
 
-if (!isValidBusinessSendTime(form.send_time)) {
-  return 'O horário de envio deve estar entre 08:00 e 18:00.'
-}
+    if (!isValidBusinessSendTime(form.send_time)) {
+      return `O horário de envio deve estar entre ${BUSINESS_START_TIME} e ${BUSINESS_END_TIME}.`
+    }
 
+    if (
+      !editingId &&
+      form.automation?.onDueDate &&
+      isToday(form.due_date) &&
+      form.send_time <= getCurrentInputTime()
+    ) {
+      return `Para cobranças com vencimento hoje, escolha um horário futuro entre ${BUSINESS_START_TIME} e ${BUSINESS_END_TIME}.`
+    }
 
-if (
-  !editingId &&
-  form.automation?.onDueDate &&
-  isToday(form.due_date) &&
-  form.send_time <= getCurrentInputTime()
-) { 
-  return 'Para cobranças com vencimento hoje, escolha um horário futuro entre 08:00 e 18:00.'
-}
     if (!form.message_type) return 'Selecione o tom da mensagem.'
 
-    if (!Array.isArray(form.payment_methods) || form.payment_methods.length === 0) {
+    if (
+      !Array.isArray(form.payment_methods) ||
+      form.payment_methods.length === 0
+    ) {
       return 'Selecione pelo menos uma forma de pagamento.'
     }
 
@@ -479,16 +507,16 @@ if (
     }
 
     if (!editingId && isRecurringCharge) {
-  const months = Number(recurrenceMonths)
+      const months = Number(recurrenceMonths)
 
-  if (!months || months < 2) {
-    return 'Informe pelo menos 2 meses para cobrança recorrente.'
-  }
+      if (!months || months < 2) {
+        return 'Informe pelo menos 2 meses para cobrança recorrente.'
+      }
 
-  if (months > 60) {
-    return 'O limite máximo para cobrança recorrente é de 60 meses.'
-  }
-}
+      if (months > 60) {
+        return 'O limite máximo para cobrança recorrente é de 60 meses.'
+      }
+    }
 
     return ''
   }
@@ -524,139 +552,140 @@ if (
     }
   }
 
-  function getAutomationForCharge(charge) {
-  const automation = {
-    ...form.automation,
+  async function handleDeleteSupportContact(contactId) {
+    const confirmed = window.confirm(
+      'Deseja excluir este WhatsApp de dúvidas? Ele não aparecerá mais nas próximas cobranças.',
+    )
+
+    if (!confirmed) return
+
+    resetMessages()
+
+    try {
+      await deleteWhatsappSupportContact(contactId)
+
+      setSupportContacts((prev) =>
+        prev.filter((contact) => contact.id !== contactId),
+      )
+
+      setSelectedSupportContactIds((prev) =>
+        prev.filter((id) => id !== contactId),
+      )
+
+      setSuccess('Contato de dúvidas excluído com sucesso.')
+    } catch (err) {
+      setError(err.message || 'Erro ao excluir contato de dúvidas.')
+    }
   }
 
-  const shouldSendOnDueDateNow =
-    Boolean(automation.onDueDate) &&
-    charge?.due_date &&
-    charge.due_date <= getTodayInputDate()
+  function getPeriodLabelForReport() {
+    if (statusFilter === 'todos') return 'Todos os status'
+    if (statusFilter === 'pendente') return 'Cobranças em aberto'
+    if (statusFilter === 'atrasado') return 'Cobranças atrasadas'
+    if (statusFilter === 'pago') return 'Cobranças pagas'
 
-  if (shouldSendOnDueDateNow) {
-    automation.onDueDate = false
+    return 'Filtro atual'
   }
 
-  return automation
-}
+  async function handleExportPdf() {
+    resetMessages()
 
-function getAutomationForCharge(charge) {
-  const automation = {
-    ...form.automation,
+    try {
+      await exportChargesToPdf({
+        charges: filteredCharges,
+        user,
+        periodLabel: getPeriodLabelForReport(),
+      })
+
+      setSuccess('Relatório PDF gerado com sucesso.')
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Erro ao gerar relatório PDF.')
+    }
   }
 
-  const shouldSendOnDueDateNow =
-    Boolean(automation.onDueDate) &&
-    charge?.due_date &&
-    charge.due_date <= getTodayInputDate()
+  async function handleExportExcel() {
+    resetMessages()
 
-  if (shouldSendOnDueDateNow) {
-    automation.onDueDate = false
+    try {
+      await exportChargesToExcel({
+        charges: filteredCharges,
+        user,
+        periodLabel: getPeriodLabelForReport(),
+      })
+
+      setSuccess('Relatório Excel gerado com sucesso.')
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Erro ao gerar relatório Excel.')
+    }
   }
 
-  return automation
-}
+  async function syncAutomation(charge) {
+    const rules = buildDefaultRules(form.automation)
 
-function getAutomationForCharge(charge) {
-  const automation = {
-    ...form.automation,
+    await replaceAutomationForCharge({
+      user_id: user.id,
+      charge,
+      rules,
+      send_time: form.send_time,
+    })
   }
-
-  const shouldSendOnDueDateNow =
-    Boolean(automation.onDueDate) &&
-    charge?.due_date &&
-    charge.due_date <= getTodayInputDate()
-
-  if (shouldSendOnDueDateNow) {
-    automation.onDueDate = false
-  }
-
-  return automation
-}
-
-  function getAutomationForCharge(charge) {
-  const automation = {
-    ...form.automation,
-  }
-
-  const shouldSendOnDueDateNow =
-    Boolean(automation.onDueDate) &&
-    charge?.due_date &&
-    charge.due_date <= getTodayInputDate()
-
-  if (shouldSendOnDueDateNow) {
-    automation.onDueDate = false
-  }
-
-  return automation
-}
-
-async function syncAutomation(charge) {
-  const rules = buildDefaultRules(form.automation)
-
-  await replaceAutomationForCharge({
-    user_id: user.id,
-    charge,
-    rules,
-    send_time: form.send_time,
-  })
-}
 
   function shouldSendWhatsAppNow(charge) {
-  if (!form.automation?.onDueDate) return false
-  if (!charge?.due_date) return false
-  if (!form.send_time) return false
-  if (!isValidBusinessSendTime(form.send_time)) return false
+    if (!form.automation?.onDueDate) return false
+    if (!charge?.due_date) return false
+    if (!form.send_time) return false
+    if (!isValidBusinessSendTime(form.send_time)) return false
 
-  const currentTime = getCurrentInputTime()
+    const currentTime = getCurrentInputTime()
 
-  return charge.due_date === getTodayInputDate() && form.send_time <= currentTime
-}
+    return charge.due_date === getTodayInputDate() && form.send_time <= currentTime
+  }
 
   async function markDueDateAutomationAsSent(charge, whatsappResult) {
-  try {
-    const sentAt =
-      whatsappResult?.charge?.whatsapp_sent_at ||
-      charge?.whatsapp_sent_at ||
-      new Date().toISOString()
+    try {
+      const sentAt =
+        whatsappResult?.charge?.whatsapp_sent_at ||
+        charge?.whatsapp_sent_at ||
+        new Date().toISOString()
 
-    const providerMessageId =
-      whatsappResult?.charge?.whatsapp_message_sid ||
-      charge?.whatsapp_message_sid ||
-      whatsappResult?.message_sid ||
-      null
+      const providerMessageId =
+        whatsappResult?.charge?.whatsapp_message_sid ||
+        charge?.whatsapp_message_sid ||
+        whatsappResult?.message_sid ||
+        null
 
-    await supabase
-      .from('scheduled_messages')
-      .update({
-        status: 'sent',
-        sent_at: sentAt,
-        provider: 'twilio',
-        provider_message_id: providerMessageId,
-        error_message: null,
-        processing_started_at: null,
-        last_attempt_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
-      .eq('charge_id', charge.id)
-      .eq('status', 'pending')
-      .lte('scheduled_for', new Date().toISOString())
-  } catch (error) {
-    console.error('Erro ao marcar automação como enviada:', error)
+      await supabase
+        .from('scheduled_messages')
+        .update({
+          status: 'sent',
+          sent_at: sentAt,
+          provider: 'twilio',
+          provider_message_id: providerMessageId,
+          error_message: null,
+          processing_started_at: null,
+          last_attempt_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id)
+        .eq('charge_id', charge.id)
+        .eq('status', 'pending')
+        .lte('scheduled_for', new Date().toISOString())
+    } catch (err) {
+      console.error('Erro ao marcar automação como enviada:', err)
+    }
   }
-}
 
-async function sendWhatsAppNowIfNeeded(charge) {
-  if (!shouldSendWhatsAppNow(charge)) return charge
+  async function sendWhatsAppNowIfNeeded(charge) {
+    if (!shouldSendWhatsAppNow(charge)) return charge
 
-  const result = await sendChargeWhatsApp(charge.id, user.id)
-  const updatedCharge = result?.charge || charge
+    const result = await sendChargeWhatsApp(charge.id, user.id)
+    const updatedCharge = result?.charge || charge
 
-  await markDueDateAutomationAsSent(updatedCharge, result)
+    await markDueDateAutomationAsSent(updatedCharge, result)
 
-  return updatedCharge
-}
+    return updatedCharge
+  }
 
   function buildBasePayload() {
     return {
@@ -665,6 +694,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
       description: form.description.trim(),
       amount: Number(form.amount),
       due_date: form.due_date,
+      send_time: form.send_time,
       message_type: form.message_type,
       payment_type: 'single',
       original_amount: Number(form.amount),
@@ -679,7 +709,6 @@ async function sendWhatsAppNowIfNeeded(charge) {
 
   async function createSingleCharge() {
     const newCharge = await createCharge(buildBasePayload())
-
     const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
 
     await syncAutomation(chargeWithPix)
@@ -705,7 +734,6 @@ async function sendWhatsAppNowIfNeeded(charge) {
 
     for (const payload of payloads) {
       const newCharge = await createCharge(payload)
-
       const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
 
       await syncAutomation(chargeWithPix)
@@ -741,6 +769,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
         description: `${form.description.trim()} - Parcela ${installment.installment_number}/${installment.installment_total}`,
         amount: installment.amount,
         due_date: installment.due_date,
+        send_time: form.send_time,
         message_type: form.message_type,
         payment_type: 'installment',
         installment_group_id: installmentGroupId,
@@ -762,6 +791,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
     }
 
     setCharges((current) => [...createdCharges, ...current])
+
     setSuccess(
       `Parcelamento criado com sucesso: ${generatedInstallments.length} parcelas com pagamento e automações programadas.`,
     )
@@ -790,6 +820,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
           description: form.description.trim(),
           amount: Number(form.amount),
           due_date: form.due_date,
+          send_time: form.send_time,
           status: existing?.status || 'pendente',
           message_type: form.message_type,
           payment_type: existing?.payment_type || 'single',
@@ -877,7 +908,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
       description: charge.description ?? '',
       amount: String(charge.amount ?? ''),
       due_date: charge.due_date ?? '',
-      send_time: DEFAULT_SEND_TIME,
+      send_time: charge.send_time ?? DEFAULT_SEND_TIME,
       message_type: charge.message_type ?? 'friendly',
       payment_type: charge.payment_type ?? 'single',
       installments: charge.installment_total ?? 2,
@@ -954,14 +985,32 @@ async function sendWhatsAppNowIfNeeded(charge) {
           <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
             Gestão de recebimentos
           </p>
+
           <h1 className="mt-1 text-2xl font-bold text-[#070D2D]">Cobranças</h1>
+
           <p className="mt-1 text-sm text-slate-500">
             Crie cobranças, parcele dívidas, programe lembretes automáticos e envie mensagens profissionais.
           </p>
         </div>
 
-        <div className="hidden rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF] md:block">
-          <Wallet size={22} />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={filteredCharges.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Exportar PDF
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={filteredCharges.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Exportar Excel
+          </button>
         </div>
       </div>
 
@@ -1001,6 +1050,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
             <h2 className="text-xl font-semibold text-[#070D2D]">
               {editingId ? 'Editar cobrança' : 'Nova cobrança'}
             </h2>
+
             <p className="mt-1 text-sm text-slate-500">
               Informe o cliente, valor, vencimento, forma de cobrança, forma de pagamento e regras de lembrete.
             </p>
@@ -1018,6 +1068,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
             className="input"
           >
             <option value="">Selecione um cliente</option>
+
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
@@ -1057,6 +1108,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <label className="block text-sm font-semibold text-[#070D2D]">
                 Forma de pagamento
               </label>
+
               <InfoTooltip text={automationTips.paymentMethod} />
             </div>
 
@@ -1148,6 +1200,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <label className="text-sm font-semibold text-[#070D2D]">
                 Data de vencimento
               </label>
+
               <InfoTooltip text={automationTips.dueDate} />
             </div>
 
@@ -1162,35 +1215,36 @@ async function sendWhatsAppNowIfNeeded(charge) {
               Na cobrança parcelada, esta será a data da primeira parcela. Na recorrente, será o dia base dos próximos meses.
             </p>
           </div>
+
+          <div className="md:col-span-2">
+            <div className="mb-2 flex items-center gap-2">
+              <label className="text-sm font-semibold text-[#070D2D]">
+                Horário de envio
+              </label>
+
+              <InfoTooltip text={automationTips.sendTime} />
+            </div>
+
+            <input
+              type="time"
+              min={BUSINESS_START_TIME}
+              max={BUSINESS_END_TIME}
+              step="300"
+              value={form.send_time}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  send_time: e.target.value,
+                })
+              }
+              className="input"
+            />
+
+            <p className="mt-2 text-xs text-slate-500">
+              Permitido somente entre {BUSINESS_START_TIME} e {BUSINESS_END_TIME}, horário de Brasília.
+            </p>
+          </div>
         </div>
-
-        <div className="md:col-span-2">
-  <div className="mb-2 flex items-center gap-2">
-    <label className="text-sm font-semibold text-[#070D2D]">
-      Horário de envio
-    </label>
-    <InfoTooltip text={automationTips.sendTime} />
-  </div>
-
-  <input
-    type="time"
-    min="08:00"
-    max="18:00"
-    step="300"
-    value={form.send_time}
-    onChange={(e) =>
-      setForm({
-        ...form,
-        send_time: e.target.value,
-      })
-    }
-    className="input"
-  />
-
-  <p className="mt-2 text-xs text-slate-500">
-    Permitido somente entre 08:00 e 18:00, horário de Brasília. Fora desse período o envio não será permitido.
-  </p>
-</div>
 
         {!editingId && form.payment_type === 'single' ? (
           <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
@@ -1227,24 +1281,24 @@ async function sendWhatsAppNowIfNeeded(charge) {
                   </span>
 
                   <input
-  type="number"
-  min="2"
-  max="60"
-  step="1"
-  value={recurrenceMonths}
-  onChange={(event) => {
-    const value = Number(event.target.value)
+                    type="number"
+                    min="2"
+                    max="60"
+                    step="1"
+                    value={recurrenceMonths}
+                    onChange={(event) => {
+                      const value = Number(event.target.value)
 
-    if (!value) {
-      setRecurrenceMonths('')
-      return
-    }
+                      if (!value) {
+                        setRecurrenceMonths('')
+                        return
+                      }
 
-    setRecurrenceMonths(Math.max(2, Math.min(value, 60)))
-  }}
-  placeholder="Ex: 12"
-  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
-/>
+                      setRecurrenceMonths(Math.max(2, Math.min(value, 60)))
+                    }}
+                    placeholder="Ex: 12"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-[#5B4BFF]"
+                  />
                 </label>
 
                 <div className="rounded-2xl bg-violet-50 p-4 text-sm text-[#5B4BFF]">
@@ -1262,6 +1316,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <h3 className="text-lg font-semibold text-[#070D2D]">
                 Prévia da recorrência
               </h3>
+
               <p className="text-sm text-slate-600">
                 O sistema criará {recurringPreview.length} cobranças mensais, cada uma com seu próprio pagamento e automação.
               </p>
@@ -1296,6 +1351,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <h3 className="text-lg font-semibold text-[#070D2D]">
                 Prévia do parcelamento
               </h3>
+
               <p className="text-sm text-slate-600">
                 O sistema criará {installmentPreview.length} cobranças futuras, cada uma com seu próprio pagamento, vencimento e automação.
               </p>
@@ -1342,33 +1398,46 @@ async function sendWhatsAppNowIfNeeded(charge) {
               </div>
             ) : (
               supportContacts.map((contact) => (
-                <label
+                <div
                   key={contact.id}
-                  className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50"
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50"
                 >
-                  <div>
-                    <p className="font-bold text-[#070D2D]">{contact.label}</p>
+                  <label className="flex flex-1 cursor-pointer items-center gap-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedSupportContactIds.includes(contact.id)}
+                      onChange={(event) => {
+                        const checked = event.target.checked
 
-                    <p className="text-sm text-slate-500">
-                      {contact.name ? `${contact.name} · ` : ''}
-                      +{contact.phone}
-                    </p>
-                  </div>
+                        setSelectedSupportContactIds((prev) => {
+                          if (checked) return [...prev, contact.id]
+                          return prev.filter((id) => id !== contact.id)
+                        })
+                      }}
+                      className="h-5 w-5"
+                    />
 
-                  <input
-                    type="checkbox"
-                    checked={selectedSupportContactIds.includes(contact.id)}
-                    onChange={(event) => {
-                      const checked = event.target.checked
+                    <div>
+                      <p className="font-bold text-[#070D2D]">
+                        {contact.label}
+                      </p>
 
-                      setSelectedSupportContactIds((prev) => {
-                        if (checked) return [...prev, contact.id]
-                        return prev.filter((id) => id !== contact.id)
-                      })
-                    }}
-                    className="h-5 w-5"
-                  />
-                </label>
+                      <p className="text-sm text-slate-500">
+                        {contact.name ? `${contact.name} · ` : ''}
+                        +{contact.phone}
+                      </p>
+                    </div>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSupportContact(contact.id)}
+                    className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                    title="Excluir contato"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -1434,6 +1503,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <h3 className="text-lg font-semibold text-[#070D2D]">
                 Automação de cobrança
               </h3>
+
               <p className="mt-1 text-sm text-slate-500">
                 Escolha quando o sistema deve programar as mensagens.
               </p>
@@ -1479,6 +1549,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               <label className="block text-sm font-medium text-slate-700">
                 Dias após o vencimento
               </label>
+
               <InfoTooltip text={automationTips.afterDueDays} />
             </div>
 
@@ -1545,6 +1616,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
             <h2 className="text-xl font-semibold text-[#070D2D]">
               Lista de cobranças
             </h2>
+
             <p className="mt-1 text-sm text-slate-500">
               Filtre por status ou busque por cliente, descrição, data, parcela ou forma de pagamento.
             </p>
@@ -1557,7 +1629,7 @@ async function sendWhatsAppNowIfNeeded(charge) {
               className="input"
             >
               <option value="todos">Todos os status</option>
-              <option value="pendente">Pendentes</option>
+              <option value="pendente">Em aberto</option>
               <option value="atrasado">Atrasadas</option>
               <option value="pago">Pagas</option>
             </select>
@@ -1661,8 +1733,11 @@ async function sendWhatsAppNowIfNeeded(charge) {
                       charge.support_whatsapp_contacts.length > 0 ? (
                         <div className="mt-2 rounded-2xl bg-violet-50 p-3 text-xs text-violet-700">
                           <strong>Dúvidas? Fale com:</strong>
+
                           <pre className="mt-1 whitespace-pre-wrap font-sans">
-                            {getSupportContactsText(charge.support_whatsapp_contacts)}
+                            {getSupportContactsText(
+                              charge.support_whatsapp_contacts,
+                            )}
                           </pre>
                         </div>
                       ) : null}
@@ -1671,7 +1746,9 @@ async function sendWhatsAppNowIfNeeded(charge) {
                         <p className="mt-1 text-xs text-slate-500">
                           Dívida original:{' '}
                           <strong className="text-[#070D2D]">
-                            {formatCurrency(charge.original_amount || charge.amount)}
+                            {formatCurrency(
+                              charge.original_amount || charge.amount,
+                            )}
                           </strong>
                         </p>
                       ) : null}
@@ -1693,7 +1770,9 @@ async function sendWhatsAppNowIfNeeded(charge) {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  navigator.clipboard.writeText(charge.pix_qr_code)
+                                  navigator.clipboard.writeText(
+                                    charge.pix_qr_code,
+                                  )
                                 }
                                 className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
                               >
@@ -1721,7 +1800,10 @@ async function sendWhatsAppNowIfNeeded(charge) {
                         <button
                           type="button"
                           onClick={() => handleGeneratePix(charge)}
-                          disabled={generatingPixId === charge.id || hasGeneratedPayment(charge)}
+                          disabled={
+                            generatingPixId === charge.id ||
+                            hasGeneratedPayment(charge)
+                          }
                           className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
                             hasGeneratedPayment(charge)
                               ? 'cursor-default border border-emerald-200 bg-emerald-50 text-emerald-700'
