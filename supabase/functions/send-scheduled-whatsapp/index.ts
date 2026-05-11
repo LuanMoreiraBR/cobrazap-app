@@ -237,12 +237,13 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 async function callSendChargeWhatsapp({
   chargeId,
   userId,
+  authorizationHeader,
 }: {
   chargeId: string
   userId: string
+  authorizationHeader: string
 }) {
   const supabaseUrl = getEnv('SUPABASE_URL').replace(/\/$/, '')
-  const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY')
 
   const response = await fetch(
     `${supabaseUrl}/functions/v1/send-charge-whatsapp`,
@@ -250,7 +251,7 @@ async function callSendChargeWhatsapp({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${serviceRoleKey}`,
+        Authorization: authorizationHeader,
       },
       body: JSON.stringify({
         charge_id: chargeId,
@@ -291,6 +292,18 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const authorizationHeader = req.headers.get('authorization')
+
+  if (!authorizationHeader) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Authorization header ausente.',
+      },
+      401,
+    )
+  }
+
   if (req.method !== 'POST') {
     return jsonResponse(
       {
@@ -327,21 +340,6 @@ Deno.serve(async (req) => {
   const results: Array<Record<string, unknown>> = []
 
   try {
-    const staleProcessingDate = new Date(
-      Date.now() - 15 * 60 * 1000,
-    ).toISOString()
-
-    await supabase
-      .from('scheduled_messages')
-      .update({
-        status: 'pending',
-        error_message:
-          'Envio voltou para pendente porque ficou preso em processamento.',
-        processing_started_at: null,
-      })
-      .eq('status', 'processing')
-      .lt('processing_started_at', staleProcessingDate)
-
     const { data: messages, error } = await supabase
       .from('scheduled_messages')
       .select(
@@ -419,7 +417,6 @@ Deno.serve(async (req) => {
         const { data: lockedMessage, error: lockError } = await supabase
           .from('scheduled_messages')
           .update({
-            status: 'processing',
             provider: 'twilio',
             processing_started_at: new Date().toISOString(),
             last_attempt_at: new Date().toISOString(),
@@ -511,6 +508,7 @@ Deno.serve(async (req) => {
         const sendResult = await callSendChargeWhatsapp({
           chargeId: message.charge_id,
           userId: message.user_id,
+          authorizationHeader,
         })
 
         const providerMessageId =
