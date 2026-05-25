@@ -1,5 +1,22 @@
 import { supabase } from './supabaseClient'
 
+export async function getAdminPlans() {
+  const { data, error } = await supabase
+    .from('platform_plans')
+    .select('*')
+    .order('price', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function updateAdminPlan(planId, fields) {
+  const { error } = await supabase
+    .from('platform_plans')
+    .update(fields)
+    .eq('id', planId)
+  if (error) throw error
+}
+
 export async function getAdminDashboard() {
   const { data, error } = await supabase.functions.invoke('admin-dashboard', {
     body: {},

@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  Tag,
   TrendingUp,
   UserCheck,
   Users,
@@ -24,8 +25,10 @@ import {
   getAdminDashboard,
   getAdminEventLogs,
   getAdminHealth,
+  getAdminPlans,
   runAdminScheduledMessageAction,
   runAdminUserAction,
+  updateAdminPlan,
 } from '../services/adminService'
 import { useAuth } from '../contexts/AuthContext'
 import { formatCurrency } from '../utils/format'
@@ -36,6 +39,7 @@ const ADMIN_SECTIONS = [
   { id: 'users', label: 'Usuários', icon: Users },
   { id: 'operation', label: 'Operação', icon: Activity },
   { id: 'credits', label: 'Compras', icon: CreditCard },
+  { id: 'pricing', label: 'Preços', icon: Tag },
   { id: 'history', label: 'Histórico admin', icon: History },
   { id: 'logs', label: 'Logs', icon: FileText },
 ]
@@ -1398,6 +1402,272 @@ function LogsSection({
   )
 }
 
+function PricingField({ label, children }) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-400">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function PricingSection() {
+  const [plans, setPlans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [local, setLocal] = useState({})
+  const [savingId, setSavingId] = useState(null)
+  const [savedId, setSavedId] = useState(null)
+  const [saveError, setSaveError] = useState('')
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const data = await getAdminPlans()
+        setPlans(data)
+        const initial = {}
+        data.forEach((plan) => {
+          initial[plan.id] = {
+            name: plan.name ?? '',
+            price: plan.price ?? '',
+            max_clients: plan.max_clients ?? '',
+            max_messages_per_month: plan.max_messages_per_month ?? '',
+            extra_message_price: plan.extra_message_price ?? '',
+            description: plan.description ?? '',
+            is_active: plan.is_active ?? true,
+          }
+        })
+        setLocal(initial)
+      } catch (err) {
+        setLoadError(err.message || 'Erro ao carregar planos.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  function handleChange(planId, field, value) {
+    setLocal((prev) => ({
+      ...prev,
+      [planId]: { ...prev[planId], [field]: value },
+    }))
+  }
+
+  async function handleSave(planId) {
+    setSavingId(planId)
+    setSaveError('')
+    try {
+      const f = local[planId]
+      await updateAdminPlan(planId, {
+        name: f.name,
+        price: Number(f.price),
+        max_clients: f.max_clients === '' ? null : Number(f.max_clients),
+        max_messages_per_month:
+          f.max_messages_per_month === '' ? null : Number(f.max_messages_per_month),
+        extra_message_price: Number(f.extra_message_price),
+        description: f.description || null,
+        is_active: f.is_active,
+      })
+      setSavedId(planId)
+      setTimeout(() => setSavedId(null), 3000)
+    } catch (err) {
+      setSaveError(err.message || 'Erro ao salvar plano.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  const inputClass =
+    'w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#070D2D] outline-none focus:border-[#5B4BFF] focus:ring-4 focus:ring-[#5B4BFF]/10'
+
+  if (loading) {
+    return (
+      <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+        <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-[#5B4BFF]/20 border-t-[#5B4BFF]" />
+        <p className="text-sm font-bold text-slate-500">Carregando planos...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5B4BFF]">
+          Configuração de preços
+        </p>
+        <h2 className="mt-2 text-2xl font-black text-[#070D2D]">
+          Planos e valores
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Altere nome, preço, limites e preço por mensagem extra de cada plano.
+          Os valores são refletidos imediatamente na página pública de planos.
+        </p>
+      </div>
+
+      {loadError ? (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      {saveError ? (
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-700">
+          {saveError}
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 md:grid-cols-3">
+        {plans.map((plan) => {
+          const fields = local[plan.id] || {}
+          const isSaving = savingId === plan.id
+          const isSaved = savedId === plan.id
+
+          return (
+            <div
+              key={plan.id}
+              className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                    ID: {plan.id}
+                  </p>
+                  <h3 className="mt-1 text-xl font-black text-[#070D2D]">
+                    {plan.name}
+                  </h3>
+                </div>
+
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={fields.is_active ?? true}
+                    onChange={(e) =>
+                      handleChange(plan.id, 'is_active', e.target.checked)
+                    }
+                    className="h-4 w-4 accent-[#5B4BFF]"
+                  />
+                  <span className="text-xs font-bold text-slate-500">Ativo</span>
+                </label>
+              </div>
+
+              <div className="space-y-4">
+                <PricingField label="Nome do plano">
+                  <input
+                    type="text"
+                    value={fields.name ?? ''}
+                    onChange={(e) =>
+                      handleChange(plan.id, 'name', e.target.value)
+                    }
+                    className={inputClass}
+                  />
+                </PricingField>
+
+                <PricingField label="Preço mensal (R$)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={fields.price ?? ''}
+                    onChange={(e) =>
+                      handleChange(plan.id, 'price', e.target.value)
+                    }
+                    className={inputClass}
+                  />
+                </PricingField>
+
+                <PricingField label="Limite de clientes (vazio = ilimitado)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={fields.max_clients ?? ''}
+                    onChange={(e) =>
+                      handleChange(plan.id, 'max_clients', e.target.value)
+                    }
+                    placeholder="Ilimitado"
+                    className={inputClass}
+                  />
+                </PricingField>
+
+                <PricingField label="Mensagens/mês (vazio = ilimitado)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={fields.max_messages_per_month ?? ''}
+                    onChange={(e) =>
+                      handleChange(
+                        plan.id,
+                        'max_messages_per_month',
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Ilimitado"
+                    className={inputClass}
+                  />
+                </PricingField>
+
+                <PricingField label="Preço por mensagem extra (R$)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={fields.extra_message_price ?? ''}
+                    onChange={(e) =>
+                      handleChange(
+                        plan.id,
+                        'extra_message_price',
+                        e.target.value,
+                      )
+                    }
+                    className={inputClass}
+                  />
+                </PricingField>
+
+                <PricingField label="Descrição (opcional)">
+                  <input
+                    type="text"
+                    value={fields.description ?? ''}
+                    onChange={(e) =>
+                      handleChange(plan.id, 'description', e.target.value)
+                    }
+                    placeholder="Ex.: Ideal para pequenos negócios"
+                    className={inputClass}
+                  />
+                </PricingField>
+              </div>
+
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => handleSave(plan.id)}
+                className={`mt-6 inline-flex w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isSaved
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
+                }`}
+              >
+                {isSaving ? 'Salvando...' : isSaved ? 'Salvo!' : 'Salvar alterações'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+        <p className="text-sm font-black text-amber-800">Sobre os pacotes de créditos</p>
+        <p className="mt-1 text-sm text-amber-700">
+          Os pacotes de créditos (50, 100 e 250 mensagens) têm preço calculado automaticamente:
+          quantidade × preço por mensagem extra do plano ativo do usuário.
+          Para alterar o valor dos pacotes, ajuste o campo{' '}
+          <strong>Preço por mensagem extra</strong> do plano correspondente.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const { signOut } = useAuth()
@@ -1723,6 +1993,10 @@ export default function AdminDashboard() {
 
           {activeSection === 'credits' ? (
             <CreditsSection data={data} />
+          ) : null}
+
+          {activeSection === 'pricing' ? (
+            <PricingSection />
           ) : null}
 
           {activeSection === 'history' ? (
