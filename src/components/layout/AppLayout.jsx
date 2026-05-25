@@ -158,10 +158,6 @@ export default function AppLayout() {
               </div>
             </div>
 
-            <div className="mb-3 border-b border-slate-100 pb-3">
-              <UsageBadge />
-            </div>
-
             <nav className="space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon
@@ -291,7 +287,7 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      <main className="min-h-screen p-4 pt-20 md:p-8 md:pl-28">
+      <main className="min-h-screen overflow-x-hidden p-4 pt-20 md:p-8 md:pl-28">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
