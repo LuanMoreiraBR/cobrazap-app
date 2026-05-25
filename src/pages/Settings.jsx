@@ -124,14 +124,16 @@ export default function Settings() {
       const data = await res.json()
       if (data.sent > 0) {
         setSuccess('Notificação de teste enviada! Verifique seu dispositivo.')
-      } else {
-        // Inscrição sumiu — tenta re-registrar automaticamente
+      } else if (data.no_subscriptions) {
         const resubscribed = await subscribeToPushNotifications(user.id)
         if (resubscribed) {
-          setSuccess('Inscrição re-registrada. Clique em "Simular notificação" novamente.')
+          setSuccess('Inscrição registrada. Clique em "Simular notificação" novamente.')
         } else {
           setError('Não foi possível registrar a inscrição. Verifique as permissões do navegador.')
         }
+      } else {
+        const errDetail = data.errors?.length ? ` (${data.errors[0]})` : ''
+        setError(`Falha ao enviar notificação${errDetail}. Verifique os secrets VAPID no Supabase.`)
       }
     } catch (err) {
       setError('Erro ao enviar notificação de teste.')

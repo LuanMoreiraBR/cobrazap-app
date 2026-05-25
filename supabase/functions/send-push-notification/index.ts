@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       .eq('user_id', user_id)
 
     if (!subscriptions?.length) {
-      return jsonResponse({ ok: true, sent: 0, reason: 'Sem inscrições.' })
+      return jsonResponse({ ok: true, sent: 0, no_subscriptions: true })
     }
 
     const payload = JSON.stringify({ title, body, url: url || '/app' })
@@ -61,9 +61,15 @@ Deno.serve(async (req) => {
 
     // Remove inscrições expiradas (410 Gone)
     const expiredEndpoints: string[] = []
+    const errors: string[] = []
+
     results.forEach((result, i) => {
-      if (result.status === 'rejected' && (result.reason as any)?.statusCode === 410) {
-        expiredEndpoints.push(subscriptions[i].endpoint)
+      if (result.status === 'rejected') {
+        const err = result.reason as any
+        errors.push(`${err?.statusCode || 'ERR'}: ${err?.body || err?.message || 'unknown'}`)
+        if (err?.statusCode === 410) {
+          expiredEndpoints.push(subscriptions[i].endpoint)
+        }
       }
     })
 
@@ -76,7 +82,7 @@ Deno.serve(async (req) => {
 
     const sent = results.filter((r) => r.status === 'fulfilled').length
 
-    return jsonResponse({ ok: true, sent, total: subscriptions.length })
+    return jsonResponse({ ok: true, sent, total: subscriptions.length, errors })
   } catch (error) {
     console.error('Erro send-push-notification:', error)
     return jsonResponse(
