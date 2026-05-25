@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Link2, PlugZap, Trash2, Wallet } from 'lucide-react'
+import { Bell, CheckCircle2, Link2, PlugZap, Trash2, Wallet } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
   disconnectMercadoPago,
   getPaymentAccount,
   startMercadoPagoConnection,
 } from '../services/paymentAccountService'
+import { supabase } from '../services/supabaseClient'
 
 export default function Settings() {
   const { user } = useAuth()
@@ -14,6 +15,8 @@ export default function Settings() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [notifPhone, setNotifPhone] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
 
   async function loadAccount() {
     try {
@@ -21,10 +24,37 @@ export default function Settings() {
 
       const data = await getPaymentAccount(user.id)
       setAccount(data)
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('phone')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      setNotifPhone(profile?.phone || '')
     } catch (err) {
       setError(err.message || 'Erro ao carregar configuração')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSavePhone() {
+    if (!user?.id) return
+    setSavingPhone(true)
+    setError('')
+    setSuccess('')
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ phone: notifPhone.trim() || null })
+        .eq('id', user.id)
+      if (updateError) throw updateError
+      setSuccess('WhatsApp de notificação salvo com sucesso.')
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar telefone.')
+    } finally {
+      setSavingPhone(false)
     }
   }
 
@@ -102,6 +132,47 @@ export default function Settings() {
           {success}
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-600">
+            <Bell size={24} />
+          </div>
+
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold text-[#070D2D]">
+              WhatsApp para notificações
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Receba um aviso no WhatsApp quando seu plano estiver próximo do vencimento (7, 3 e 1 dia antes).
+            </p>
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="tel"
+                placeholder="Ex: 11999990000"
+                value={notifPhone}
+                onChange={(e) => setNotifPhone(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-[#070D2D] focus:border-[#5B4BFF] focus:outline-none sm:max-w-xs"
+              />
+
+              <button
+                type="button"
+                onClick={handleSavePhone}
+                disabled={savingPhone}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B4BFF] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4A3BE8] disabled:opacity-60"
+              >
+                {savingPhone ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-400">
+              Só DDD + número, sem espaços. Ex: 11999990000
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
