@@ -1,6 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getPlatformPlans } from '../services/platformBillingService'
 
 export default function LandingPage() {
+  const [plans, setPlans] = useState([])
+
+  useEffect(() => {
+    getPlatformPlans().then(setPlans).catch(() => {})
+  }, [])
   const testimonials = [
     {
       name: 'Carla Mendes',
@@ -115,54 +122,31 @@ export default function LandingPage() {
     { icon: '⚖️', label: 'Advogados & Contadores' },
   ]
 
-  const pricingPlans = [
-  {
-    name: 'Inicial',
-    price: 'R$ 99',
-    period: '/mês',
-    description: 'Para autônomos e pequenos negócios começando a automatizar cobranças.',
-    highlighted: false,
-    features: [
-      'Até 50 clientes cadastrados',
-      'Até 100 mensagens de cobrança por mês',
-      'Envio oficial pelo WhatsApp',
-      'Geração de Pix e link de pagamento',
-      'Dashboard financeiro completo',
-      'Mensagens extras por R$ 0,35 cada',
-    ],
-  },
-  {
-    name: 'Pro',
-    price: 'R$ 199',
-    period: '/mês',
-    description: 'Para quem já tem uma carteira maior de clientes e cobra com frequência.',
-    highlighted: true,
-    badge: 'Mais recomendado',
-    features: [
-      'Até 200 clientes cadastrados',
-      'Até 400 mensagens de cobrança por mês',
-      'Envio oficial pelo WhatsApp',
-      'Automações de lembrete',
-      'Geração de Pix e link de pagamento',
-      'Mensagens extras por R$ 0,30 cada',
-    ],
-  },
-  {
-    name: 'Scale',
-    price: 'R$ 299',
-    period: '/mês',
-    description: 'Para operações maiores que precisam cobrar muitos clientes todos os meses.',
-    highlighted: false,
-    features: [
-      'Até 500 clientes cadastrados',
-      'Até 1000 mensagens de cobrança por mês',
-      'Envio oficial pelo WhatsApp',
-      'Automações de lembrete',
-      'Dashboard financeiro completo',
-      'Mensagens extras por R$ 0,25 cada',
-    ],
-  },
-]
+  function getPlanFeatures(plan) {
+    const features = []
+    if (plan.max_clients) {
+      features.push(`Até ${plan.max_clients} clientes cadastrados`)
+    } else {
+      features.push('Clientes ilimitados')
+    }
+    if (plan.max_messages_per_month) {
+      features.push(`Até ${plan.max_messages_per_month} mensagens de cobrança por mês`)
+    } else {
+      features.push('Mensagens ilimitadas')
+    }
+    features.push('Envio oficial pelo WhatsApp')
+    features.push('Geração de Pix e link de pagamento')
+    features.push('Dashboard financeiro completo')
+    if (Number(plan.extra_message_price) > 0) {
+      const priceStr = Number(plan.extra_message_price).toFixed(2).replace('.', ',')
+      features.push(`Mensagens extras por R$ ${priceStr} cada`)
+    }
+    return features
+  }
+
+  function isHighlightedPlan(plan, index) {
+    return index === 1
+  }
 
   return (
     <div className="landing-page">
@@ -890,9 +874,9 @@ export default function LandingPage() {
 
         .pricing-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 22px;
-          max-width: 900px;
+          max-width: 1100px;
           margin: 0 auto;
         }
 
@@ -1142,7 +1126,7 @@ export default function LandingPage() {
           }
 
           .pricing-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
           }
 
           .audience-pills {
@@ -1714,35 +1698,41 @@ export default function LandingPage() {
           </div>
 
           <div className="pricing-grid">
-            {pricingPlans.map((plan) => (
-              <div
-                key={plan.name}
-                className={`pricing-card ${plan.highlighted ? 'pricing-card-highlighted' : ''}`}
-              >
-                {plan.badge && <div className="pricing-badge">{plan.badge}</div>}
+            {plans.map((plan, index) => {
+              const highlighted = isHighlightedPlan(plan, index)
+              const features = getPlanFeatures(plan)
+              const priceFormatted = `R$ ${Number(plan.price).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
 
-                <h3 className="pricing-name">{plan.name}</h3>
-                <p className="pricing-description">{plan.description}</p>
+              return (
+                <div
+                  key={plan.id}
+                  className={`pricing-card ${highlighted ? 'pricing-card-highlighted' : ''}`}
+                >
+                  {highlighted && <div className="pricing-badge">Mais recomendado</div>}
 
-                <div className="pricing-price">
-                  <span className="pricing-price-value">{plan.price}</span>
-                  <span className="pricing-period">{plan.period}</span>
+                  <h3 className="pricing-name">{plan.name}</h3>
+                  <p className="pricing-description">{plan.description}</p>
+
+                  <div className="pricing-price">
+                    <span className="pricing-price-value">{priceFormatted}</span>
+                    <span className="pricing-period">/mês</span>
+                  </div>
+
+                  <ul className="pricing-features">
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <span className="pricing-check">✓</span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <a href="/cadastro" className={highlighted ? 'btn-primary' : 'btn-outline'}>
+                    Escolher {plan.name}
+                  </a>
                 </div>
-
-                <ul className="pricing-features">
-                  {plan.features.map((feature) => (
-                    <li key={feature}>
-                      <span className="pricing-check">✓</span>
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <a href="/cadastro" className={plan.highlighted ? 'btn-primary' : 'btn-outline'}>
-                  Escolher {plan.name}
-                </a>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </section>
