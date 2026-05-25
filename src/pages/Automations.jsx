@@ -4,6 +4,8 @@ import {
   BellRing,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   RefreshCw,
   Send,
@@ -93,6 +95,15 @@ export default function Automations() {
   const [statusFilter, setStatusFilter] = useState('todos')
   const [period, setPeriod] = useState('month')
   const [referenceDate, setReferenceDate] = useState(getTodayInputDate())
+  const [expandedMessages, setExpandedMessages] = useState(new Set())
+
+  function toggleMessage(id) {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   async function reconcileAlreadySentMessages(data = []) {
   const pendingButAlreadySent = data.filter((item) => {
@@ -444,11 +455,28 @@ async function loadItems() {
                           </p>
                         </div>
 
-                        <div className="mt-4 rounded-2xl bg-white/80 p-3 text-sm text-slate-700 ring-1 ring-slate-200">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            Mensagem
-                          </p>
-                          <p className="mt-1">{item.message_text}</p>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMessage(item.id)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#5B4BFF] hover:underline"
+                          >
+                            {expandedMessages.has(item.id) ? (
+                              <>
+                                <ChevronUp size={14} /> Ocultar mensagem
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown size={14} /> Exibir mensagem
+                              </>
+                            )}
+                          </button>
+
+                          {expandedMessages.has(item.id) ? (
+                            <div className="mt-2 rounded-2xl bg-white/80 p-3 text-sm text-slate-700 ring-1 ring-slate-200">
+                              <p className="whitespace-pre-wrap">{item.message_text}</p>
+                            </div>
+                          ) : null}
                         </div>
 
                         {item.error_message ? (
