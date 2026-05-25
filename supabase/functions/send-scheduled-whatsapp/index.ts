@@ -296,6 +296,77 @@ async function callSendChargeWhatsapp({
   return data || {}
 }
 
+function formatWhatsAppTo(phone: string | null | undefined) {
+  const digits = String(phone || '').replace(/\D/g, '')
+  if (!digits) return ''
+  const withCountry = digits.startsWith('55') ? digits : `55${digits}`
+  return `whatsapp:+${withCountry}`
+}
+
+async function notifyUserOfFailedMessage(
+  supabase: any,
+  userId: string,
+  chargeId: string,
+  reason: string,
+) {
+  try {
+    const accountSid = getOptionalEnv('TWILIO_ACCOUNT_SID')
+    const authToken = getOptionalEnv('TWILIO_AUTH_TOKEN')
+    const messagingServiceSid = getOptionalEnv('TWILIO_MESSAGING_SERVICE_SID')
+
+    if (!accountSid || !authToken || !messagingServiceSid) return
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('phone')
+      .eq('id', userId)
+      .maybeSingle()
+
+    const phone = profile?.phone
+    if (!phone) return
+
+    const to = formatWhatsAppTo(phone)
+    if (!to) return
+
+    const body =
+      `⚠️ *Lembrei* — uma mensagem agendada não pôde ser enviada após ${getMaxAttempts()} tentativas.\n\n` +
+      `Motivo: ${reason}\n\n` +
+      `Acesse o Lembrei para verificar e reagendar: https://www.uselembrei.com.br/app`
+
+    const params = new URLSearchParams()
+    params.set('MessagingServiceSid', messagingServiceSid)
+    params.set('To', to)
+    params.set('Body', body)
+
+    const auth = btoa(`${accountSid}:${authToken}`)
+
+    await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params,
+      },
+    )
+
+    await logPlatformEvent({
+      supabase,
+      provider: 'twilio',
+      eventType: 'scheduled_message_failure_notif',
+      userId,
+      relatedTable: 'charges',
+      relatedId: chargeId,
+      status: 'info',
+      message: `Notificação de falha enviada ao usuário: ${to}`,
+    })
+  } catch (err) {
+    console.error('Erro ao notificar usuário de falha:', err)
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -400,16 +471,20 @@ Deno.serve(async (req) => {
 
       try {
         if (currentAttempts >= maxAttempts) {
+          const failReason = `Limite de tentativas atingido: ${maxAttempts}.`
+
           await supabase
             .from('scheduled_messages')
             .update({
               status: 'failed',
-              error_message: `Limite de tentativas atingido: ${maxAttempts}.`,
+              error_message: failReason,
               last_attempt_at: new Date().toISOString(),
               processing_started_at: null,
             })
             .eq('id', message.id)
             .eq('status', 'pending')
+
+          await notifyUserOfFailedMessage(supabase, message.user_id, message.charge_id, failReason)
 
           results.push({
             id: message.id,
@@ -417,7 +492,7 @@ Deno.serve(async (req) => {
             charge_id: message.charge_id,
             client_id: message.client_id,
             status: 'failed',
-            reason: `Limite de tentativas atingido: ${maxAttempts}.`,
+            reason: failReason,
           })
 
           continue
