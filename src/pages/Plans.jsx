@@ -114,14 +114,14 @@ export default function Plans() {
 
   function isHighlightedPlan(plan) {
     const name = plan.name?.toLowerCase() || ''
-
-    return name.includes('pro') || name.includes('scale')
+    return name.includes('pro')
   }
 
   function getPlanLabel(plan) {
     if (isCurrentPlan(plan)) return 'Plano atual'
+    if (Number(plan.price) === 0) return 'Experimente grátis'
     if (isHighlightedPlan(plan)) return 'Mais recomendado'
-    return 'Inicial'
+    return 'Disponível'
   }
 
   function getPlanSubtitle(plan) {
@@ -418,7 +418,9 @@ export default function Plans() {
                     className={`inline-flex rounded-full px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] ${
                       highlighted
                         ? 'bg-white/10 text-violet-100'
-                        : 'bg-[#5B4BFF]/10 text-[#5B4BFF]'
+                        : Number(plan.price) === 0
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-[#5B4BFF]/10 text-[#5B4BFF]'
                     }`}
                   >
                     {getPlanLabel(plan)}
@@ -525,9 +527,11 @@ export default function Plans() {
                     className={`mt-8 inline-flex w-full items-center justify-center rounded-2xl px-5 py-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${
                       current
                         ? 'bg-emerald-100 text-emerald-700'
-                        : highlighted
-                          ? 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
-                          : 'bg-[#070D2D] text-white hover:bg-[#111A45]'
+                        : Number(plan.price) === 0
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                          : highlighted
+                            ? 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
+                            : 'bg-[#070D2D] text-white hover:bg-[#111A45]'
                     }`}
                   >
                     {current
