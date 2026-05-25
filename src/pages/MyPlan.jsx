@@ -103,6 +103,7 @@ export default function MyPlan() {
 
   const subscription = summary?.subscription || null
   const plan = summary?.plan || subscription?.plan || null
+  const hasPaidPlan = summary?.hasActivePlan && Number(plan?.price ?? 0) > 0
 
   const daysUntilEnd = useMemo(() => {
     return getDaysUntil(subscription?.current_period_end)
@@ -345,7 +346,7 @@ export default function MyPlan() {
           </div>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            {summary?.hasActivePlan ? (
+            {hasPaidPlan ? (
               <button
                 type="button"
                 onClick={handleRenewCurrentPlan}
@@ -374,51 +375,53 @@ export default function MyPlan() {
             </a>
           </div>
 
-          <div className="mt-4 rounded-2xl bg-white/10 p-4">
-            <p className="text-sm font-black text-white">
-              Renovação automática
-            </p>
+          {hasPaidPlan ? (
+            <div className="mt-4 rounded-2xl bg-white/10 p-4">
+              <p className="text-sm font-black text-white">
+                Renovação automática
+              </p>
 
-            <p className="mt-1 text-sm text-slate-300">
-              {autoRenewActive
-                ? 'Ativa. O Mercado Pago tentará renovar automaticamente no próximo ciclo.'
-                : autoRenewPending
-                  ? 'Pendente. Conclua o cadastro do meio de pagamento no Mercado Pago.'
-                  : autoRenewCancelled
-                    ? 'Cancelada. Você pode ativar novamente quando quiser.'
-                    : 'Desativada. Ative para renovar automaticamente com cartão pelo Mercado Pago.'}
-            </p>
+              <p className="mt-1 text-sm text-slate-300">
+                {autoRenewActive
+                  ? 'Ativa. O Mercado Pago tentará renovar automaticamente no próximo ciclo.'
+                  : autoRenewPending
+                    ? 'Pendente. Conclua o cadastro do meio de pagamento no Mercado Pago.'
+                    : autoRenewCancelled
+                      ? 'Cancelada. Você pode ativar novamente quando quiser.'
+                      : 'Desativada. Ative para renovar automaticamente com cartão pelo Mercado Pago.'}
+              </p>
 
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              {!autoRenewActive ? (
-                <button
-                  type="button"
-                  onClick={handleActivateAutoRenew}
-                  disabled={activatingAutoRenew}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-white hover:bg-emerald-600 disabled:opacity-60"
-                >
-                  {activatingAutoRenew
-                    ? 'Criando assinatura...'
-                    : autoRenewPending
-                      ? 'Concluir ativação automática'
-                      : 'Ativar renovação automática'}
-                </button>
-              ) : null}
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                {!autoRenewActive ? (
+                  <button
+                    type="button"
+                    onClick={handleActivateAutoRenew}
+                    disabled={activatingAutoRenew}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black text-white hover:bg-emerald-600 disabled:opacity-60"
+                  >
+                    {activatingAutoRenew
+                      ? 'Criando assinatura...'
+                      : autoRenewPending
+                        ? 'Concluir ativação automática'
+                        : 'Ativar renovação automática'}
+                  </button>
+                ) : null}
 
-              {autoRenewActive || autoRenewPending ? (
-                <button
-                  type="button"
-                  onClick={handleCancelAutoRenew}
-                  disabled={cancellingAutoRenew}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white hover:bg-white/15 disabled:opacity-60"
-                >
-                  {cancellingAutoRenew
-                    ? 'Cancelando...'
-                    : 'Cancelar renovação automática'}
-                </button>
-              ) : null}
+                {autoRenewActive || autoRenewPending ? (
+                  <button
+                    type="button"
+                    onClick={handleCancelAutoRenew}
+                    disabled={cancellingAutoRenew}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white hover:bg-white/15 disabled:opacity-60"
+                  >
+                    {cancellingAutoRenew
+                      ? 'Cancelando...'
+                      : 'Cancelar renovação automática'}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
