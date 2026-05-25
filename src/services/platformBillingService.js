@@ -100,6 +100,30 @@ export function isSubscriptionActive(subscription) {
 
 export const MESSAGE_CREDIT_PACKAGES = [50, 100, 250]
 
+export async function activateFreePlan() {
+  const { data, error } = await supabase.functions.invoke('activate-free-plan', {
+    body: {},
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao ativar plano gratuito.')
+      } catch {
+        throw new Error(error.message || 'Erro ao ativar plano gratuito.')
+      }
+    }
+    throw new Error(error.message || 'Erro ao ativar plano gratuito.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao ativar plano gratuito.')
+  }
+
+  return data
+}
+
 export async function getExtraMessageCredits(userId) {
   const { data, error } = await supabase
     .from('message_credit_purchases')

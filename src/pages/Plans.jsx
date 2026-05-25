@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
+  activateFreePlan,
   createMessageCreditCheckout,
   createPlatformCheckout,
   getPlatformPlans,
@@ -20,6 +21,7 @@ function isSubscriptionActive(subscription) {
 
 export default function Plans() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   const [plans, setPlans] = useState([])
@@ -32,6 +34,8 @@ export default function Plans() {
 
   const wantsCredits = searchParams.get('buy') === 'credits'
   const hasActiveSubscription = isSubscriptionActive(subscription)
+  const hasFreePlan = hasActiveSubscription && Number(subscription?.plan?.price ?? -1) === 0
+  const showPlanCards = !hasActiveSubscription || hasFreePlan
 
   useEffect(() => {
     async function load() {
@@ -63,6 +67,14 @@ export default function Plans() {
     setProcessingPlanId(planId)
 
     try {
+      const plan = plans.find((p) => p.id === planId)
+
+      if (Number(plan?.price ?? -1) === 0) {
+        await activateFreePlan()
+        navigate('/app', { replace: true })
+        return
+      }
+
       const result = await createPlatformCheckout({
         userId: user.id,
         planId,
@@ -366,7 +378,7 @@ export default function Plans() {
           </section>
         ) : null}
 
-        {!hasActiveSubscription ? (
+        {showPlanCards ? (
         <section>
           <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -521,8 +533,10 @@ export default function Plans() {
                     {current
                       ? 'Plano atual'
                       : processingPlanId === plan.id
-                        ? 'Gerando checkout...'
-                        : 'Escolher este plano'}
+                        ? (Number(plan.price) === 0 ? 'Ativando...' : 'Gerando checkout...')
+                        : Number(plan.price) === 0
+                          ? 'Começar gratuitamente'
+                          : 'Escolher este plano'}
                   </button>
                 </div>
               )

@@ -145,8 +145,10 @@ export default function LandingPage() {
   }
 
   function isHighlightedPlan(plan, index) {
-    return index === 1
+    return index === 1 // middle of the 3 paid plans
   }
+
+  const paidPlans = plans.filter((p) => Number(p.price) > 0)
 
   return (
     <div className="landing-page">
@@ -1698,7 +1700,7 @@ export default function LandingPage() {
           </div>
 
           <div className="pricing-grid">
-            {plans.map((plan, index) => {
+            {paidPlans.map((plan, index) => {
               const highlighted = isHighlightedPlan(plan, index)
               const features = getPlanFeatures(plan)
               const priceFormatted = `R$ ${Number(plan.price).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
