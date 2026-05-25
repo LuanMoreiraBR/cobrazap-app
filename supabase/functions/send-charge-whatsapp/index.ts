@@ -223,10 +223,19 @@ async function canSendMessageForUser(supabase: any, userId: string) {
 
   if (subscriptionError) throw subscriptionError
 
+  const hasPeriodEnd = Boolean(subscription?.current_period_end)
+  const periodExpired = hasPeriodEnd && new Date(subscription.current_period_end) <= new Date()
+
+  // Paid plan that expired → clear renewal prompt instead of silent downgrade
+  if (subscription && periodExpired && Number(subscription?.plan?.price ?? 0) > 0) {
+    return {
+      allowed: false,
+      reason: 'Seu plano expirou. Acesse a aba Planos para renovar e continuar enviando cobranças.',
+    }
+  }
+
   const hasActivePlan =
-    subscription?.status === 'active' &&
-    (!subscription.current_period_end ||
-      new Date(subscription.current_period_end) > new Date())
+    subscription?.status === 'active' && !periodExpired
 
   const planMessageLimit = hasActivePlan
     ? Number(subscription?.plan?.max_messages_per_month || 0)
@@ -257,8 +266,8 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     return {
       allowed: false,
       reason: hasActivePlan
-        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}.`
-        : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens grátis. Escolha um plano para continuar enviando cobranças.`,
+        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}. Compre créditos extras para continuar.`
+        : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens do plano gratuito. Escolha um plano pago para continuar enviando cobranças.`,
     }
   }
 

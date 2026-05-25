@@ -118,6 +118,32 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
+    // Require active paid subscription to purchase credits
+    const { data: subscription } = await supabase
+      .from('user_subscriptions')
+      .select('*, plan:platform_plans(*)')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    const periodExpired = subscription?.current_period_end &&
+      new Date(subscription.current_period_end) <= new Date()
+    const hasActivePaidPlan =
+      subscription?.status === 'active' &&
+      !periodExpired &&
+      Number(subscription?.plan?.price ?? 0) > 0
+
+    if (!hasActivePaidPlan) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: periodExpired
+            ? 'Seu plano expirou. Renove o plano antes de comprar créditos extras.'
+            : 'Créditos extras estão disponíveis apenas para assinantes de planos pagos.',
+        },
+        403,
+      )
+    }
+
     const amount = calculateAmount(quantity)
 
     const { data: purchase, error: purchaseError } = await supabase
