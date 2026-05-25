@@ -84,7 +84,7 @@ export default function AppLayout() {
 
     async function requestPushPermission() {
       if (!user?.id || !isPushSupported()) return
-      if (getNotificationPermission() === 'default') {
+      if (getNotificationPermission() !== 'denied') {
         await subscribeToPushNotifications(user.id)
       }
     }

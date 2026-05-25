@@ -122,8 +122,17 @@ export default function Settings() {
         }),
       })
       const data = await res.json()
-      if (data.sent > 0) setSuccess('Notificação de teste enviada! Verifique seu dispositivo.')
-      else setError('Nenhuma inscrição encontrada. Ative as notificações primeiro.')
+      if (data.sent > 0) {
+        setSuccess('Notificação de teste enviada! Verifique seu dispositivo.')
+      } else {
+        // Inscrição sumiu — tenta re-registrar automaticamente
+        const resubscribed = await subscribeToPushNotifications(user.id)
+        if (resubscribed) {
+          setSuccess('Inscrição re-registrada. Clique em "Simular notificação" novamente.')
+        } else {
+          setError('Não foi possível registrar a inscrição. Verifique as permissões do navegador.')
+        }
+      }
     } catch (err) {
       setError('Erro ao enviar notificação de teste.')
     } finally {
