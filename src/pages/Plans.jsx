@@ -304,7 +304,7 @@ export default function Plans() {
           </div>
         </section>
 
-        {hasActiveSubscription ? (
+        {hasActiveSubscription && !hasFreePlan ? (
           <section
             id="credits"
             className={`rounded-[30px] border bg-white/90 p-6 shadow-sm ${
