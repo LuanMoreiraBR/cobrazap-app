@@ -310,6 +310,7 @@ async function sendWithTwilio({
   const accountSid = getEnv('TWILIO_ACCOUNT_SID')
   const authToken = getEnv('TWILIO_AUTH_TOKEN')
   const messagingServiceSid = getEnv('TWILIO_MESSAGING_SERVICE_SID')
+  const supabaseUrl = getOptionalEnv('SUPABASE_URL').replace(/\/$/, '')
 
   const chargeTemplateSid = getOptionalEnv(
     'TWILIO_CHARGE_TEMPLATE_SID',
@@ -328,6 +329,10 @@ async function sendWithTwilio({
   const body = new URLSearchParams()
   body.set('MessagingServiceSid', messagingServiceSid)
   body.set('To', to)
+
+  if (supabaseUrl) {
+    body.set('StatusCallback', `${supabaseUrl}/functions/v1/twilio-status-webhook`)
+  }
 
   if (selectedTemplateSid && contentVariables) {
     body.set('ContentSid', selectedTemplateSid)
