@@ -10,11 +10,27 @@ export async function getAdminPlans() {
 }
 
 export async function updateAdminPlan(planId, fields) {
-  const { error } = await supabase
-    .from('platform_plans')
-    .update(fields)
-    .eq('id', planId)
-  if (error) throw error
+  const { data, error } = await supabase.functions.invoke('admin-update-plan', {
+    body: { plan_id: planId, fields },
+  })
+
+  if (error) {
+    if (error.context) {
+      try {
+        const errorBody = await error.context.json()
+        throw new Error(errorBody?.error || 'Erro ao atualizar plano.')
+      } catch {
+        throw new Error(error.message || 'Erro ao atualizar plano.')
+      }
+    }
+    throw new Error(error.message || 'Erro ao atualizar plano.')
+  }
+
+  if (!data?.ok) {
+    throw new Error(data?.error || 'Erro ao atualizar plano.')
+  }
+
+  return data
 }
 
 export async function getAdminDashboard() {
