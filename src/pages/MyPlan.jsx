@@ -356,15 +356,7 @@ export default function MyPlan() {
                 <CreditCard size={18} />
                 {renewing ? 'Gerando pagamento...' : 'Renovar plano'}
               </button>
-            ) : (
-              <a
-                href="/planos"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#070D2D] hover:bg-slate-100"
-              >
-                <CreditCard size={18} />
-                Escolher plano
-              </a>
-            )}
+            ) : null}
 
             <a
               href="/planos"
