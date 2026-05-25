@@ -13,6 +13,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
 import { getPaymentAccount } from '../../services/paymentAccountService'
+import { getUserSubscription } from '../../services/platformBillingService'
 import UsageBadge from '../UsageBadge'
 
 const navItems = [
@@ -41,6 +42,7 @@ export default function AppLayout() {
   const [openUserMenu, setOpenUserMenu] = useState(false)
   const [openMobileMenu, setOpenMobileMenu] = useState(false)
   const [mpConnected, setMpConnected] = useState(null)
+  const [hasPaidPlan, setHasPaidPlan] = useState(true)
 
   useEffect(() => {
     async function loadProfile() {
@@ -65,8 +67,19 @@ export default function AppLayout() {
       }
     }
 
+    async function checkSubscription() {
+      if (!user?.id) return
+      try {
+        const sub = await getUserSubscription(user.id)
+        setHasPaidPlan(sub !== null && Number(sub?.plan?.price ?? 0) > 0)
+      } catch {
+        setHasPaidPlan(false)
+      }
+    }
+
     loadProfile()
     checkMpAccount()
+    checkSubscription()
   }, [user])
 
   const userName =
@@ -89,6 +102,20 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <style>{`
+        @keyframes plan-attention {
+          0%, 80%, 100% { transform: rotate(0deg); }
+          82% { transform: rotate(-14deg); }
+          84% { transform: rotate(14deg); }
+          86% { transform: rotate(-10deg); }
+          88% { transform: rotate(10deg); }
+          90% { transform: rotate(-6deg); }
+          92% { transform: rotate(6deg); }
+          94% { transform: rotate(-3deg); }
+          96% { transform: rotate(3deg); }
+        }
+        .plan-shake { animation: plan-attention 3.5s ease-in-out infinite; }
+      `}</style>
       {/* MENU MOBILE */}
       <div className="fixed left-4 top-4 z-50 md:hidden">
         <button
@@ -125,6 +152,7 @@ export default function AppLayout() {
             <nav className="space-y-1">
               {navItems.map((item) => {
                 const Icon = item.icon
+                const isPlanItem = item.to === '/app/plano' && !hasPaidPlan
 
                 return (
                   <NavLink
@@ -134,8 +162,13 @@ export default function AppLayout() {
                     onClick={closeMobileMenu}
                     className={navClass}
                   >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
+                    <Icon
+                      size={18}
+                      className={isPlanItem ? 'plan-shake text-orange-500' : ''}
+                    />
+                    <span className={isPlanItem ? 'font-bold text-orange-500' : ''}>
+                      {item.label}
+                    </span>
                   </NavLink>
                 )
               })}
@@ -192,6 +225,7 @@ export default function AppLayout() {
         <nav className="space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon
+            const isPlanItem = item.to === '/app/plano' && !hasPaidPlan
 
             return (
               <NavLink
@@ -200,9 +234,12 @@ export default function AppLayout() {
                 end={item.end}
                 className={navClass}
               >
-                <Icon size={19} className="shrink-0" />
+                <Icon
+                  size={19}
+                  className={`shrink-0${isPlanItem ? ' plan-shake text-orange-500' : ''}`}
+                />
 
-                <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                <span className={`whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100${isPlanItem ? ' font-bold text-orange-500' : ''}`}>
                   {item.label}
                 </span>
               </NavLink>
