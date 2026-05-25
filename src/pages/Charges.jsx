@@ -50,6 +50,8 @@ import {
   exportChargesToPdf,
 } from '../utils/reportExport'
 
+import { getUsageSummary } from '../services/usageService'
+
 function getTodayInputDate() {
   const now = new Date()
   const year = now.getFullYear()
@@ -294,6 +296,7 @@ export default function Charges() {
 
   const [mpAccount, setMpAccount] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [usage, setUsage] = useState(null)
   const [saving, setSaving] = useState(false)
   const [generatingPixId, setGeneratingPixId] = useState(null)
   const [error, setError] = useState('')
@@ -331,7 +334,19 @@ export default function Charges() {
       }
     }
 
-    if (user?.id) loadData()
+    async function loadUsage() {
+      try {
+        const summary = await getUsageSummary(user.id)
+        setUsage(summary)
+      } catch {
+        // non-critical
+      }
+    }
+
+    if (user?.id) {
+      loadData()
+      loadUsage()
+    }
   }, [user])
 
   const selectedSupportContacts = useMemo(() => {
@@ -1599,8 +1614,22 @@ export default function Charges() {
           </div>
         ) : null}
 
+        {!editingId && usage && !usage.canSendMessage ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Limite de mensagens atingido ({usage.messagesUsed}/{usage.totalMessageLimit}).{' '}
+            <a href="/planos" className="font-semibold underline hover:text-amber-900">
+              Faça upgrade do plano
+            </a>{' '}
+            ou compre créditos extras para continuar enviando cobranças.
+          </div>
+        ) : null}
+
         <div className="mt-5 flex flex-wrap gap-3">
-          <button type="submit" disabled={saving} className="btn-primary">
+          <button
+            type="submit"
+            disabled={saving || (!editingId && usage !== null && !usage?.canSendMessage)}
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {saving
               ? 'Salvando...'
               : editingId

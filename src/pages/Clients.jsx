@@ -16,6 +16,7 @@ import {
   getClients,
   updateClient,
 } from '../services/clientsService'
+import { getUsageSummary } from '../services/usageService'
 import { formatPhone, onlyDigits } from '../utils/format'
 
 const initialForm = {
@@ -51,6 +52,7 @@ export default function Clients() {
   const [editingId, setEditingId] = useState(null)
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(initialForm)
+  const [usage, setUsage] = useState(null)
 
   useEffect(() => {
     async function loadClients() {
@@ -64,7 +66,19 @@ export default function Clients() {
       }
     }
 
-    if (user?.id) loadClients()
+    async function loadUsage() {
+      try {
+        const summary = await getUsageSummary(user.id)
+        setUsage(summary)
+      } catch {
+        // non-critical
+      }
+    }
+
+    if (user?.id) {
+      loadClients()
+      loadUsage()
+    }
   }, [user])
 
   const filteredClients = useMemo(() => {
@@ -275,8 +289,22 @@ export default function Clients() {
           </div>
         ) : null}
 
+        {!editingId && usage && !usage.canCreateClient ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Limite de clientes atingido ({usage.clientsUsed}/{usage.clientLimit}).{' '}
+            <a href="/planos" className="font-semibold underline hover:text-amber-900">
+              Faça upgrade do plano
+            </a>{' '}
+            para cadastrar mais clientes.
+          </div>
+        ) : null}
+
         <div className="mt-5 flex flex-wrap gap-3">
-          <button type="submit" disabled={saving} className="btn-primary">
+          <button
+            type="submit"
+            disabled={saving || (!editingId && usage !== null && !usage?.canCreateClient)}
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {saving
               ? 'Salvando...'
               : editingId
