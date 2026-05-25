@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  AlertTriangle,
   LayoutDashboard,
   Users,
   Wallet,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
+import { getPaymentAccount } from '../../services/paymentAccountService'
 import UsageBadge from '../UsageBadge'
 
 const navItems = [
@@ -32,11 +34,13 @@ const navClass = ({ isActive }) =>
 
 export default function AppLayout() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, signOut } = useAuth()
 
   const [profileName, setProfileName] = useState('')
   const [openUserMenu, setOpenUserMenu] = useState(false)
   const [openMobileMenu, setOpenMobileMenu] = useState(false)
+  const [mpConnected, setMpConnected] = useState(null)
 
   useEffect(() => {
     async function loadProfile() {
@@ -51,7 +55,18 @@ export default function AppLayout() {
       setProfileName(data?.name || '')
     }
 
+    async function checkMpAccount() {
+      if (!user?.id) return
+      try {
+        const account = await getPaymentAccount(user.id)
+        setMpConnected(!!account)
+      } catch {
+        setMpConnected(false)
+      }
+    }
+
     loadProfile()
+    checkMpAccount()
   }, [user])
 
   const userName =
@@ -242,6 +257,23 @@ export default function AppLayout() {
             <UsageBadge />
           </div>
         </div>
+
+        {mpConnected === false && location.pathname !== '/app/configuracoes' && (
+          <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={18} className="shrink-0 text-amber-600" />
+              <p className="text-sm font-medium text-amber-800">
+                Você ainda não conectou sua conta Mercado Pago. Sem isso, não é possível gerar PIX para as cobranças.
+              </p>
+            </div>
+            <Link
+              to="/app/configuracoes"
+              className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+            >
+              Conectar agora
+            </Link>
+          </div>
+        )}
 
         <Outlet />
       </main>

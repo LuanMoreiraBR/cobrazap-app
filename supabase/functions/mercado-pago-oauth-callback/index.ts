@@ -7,7 +7,11 @@ function getEnv(name: string) {
 }
 
 function decodeState(state: string) {
-  return JSON.parse(atob(state))
+  try {
+    return JSON.parse(atob(state))
+  } catch {
+    throw new Error('State OAuth inválido.')
+  }
 }
 
 function getExpiresAt(expiresIn?: number) {
@@ -27,7 +31,9 @@ Deno.serve(async (req) => {
     const decodedState = decodeState(state)
     const userId = decodedState.user_id
 
-    if (!userId) throw new Error('user_id ausente no state.')
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('user_id ausente ou inválido no state.')
+    }
 
     const tokenResponse = await fetch('https://api.mercadopago.com/oauth/token', {
       method: 'POST',
@@ -49,6 +55,38 @@ Deno.serve(async (req) => {
       throw new Error(`Erro OAuth Mercado Pago: ${JSON.stringify(tokenData)}`)
     }
 
+    if (!tokenData.access_token) {
+      throw new Error('Mercado Pago não retornou access_token.')
+    }
+
+    const meResponse = await fetch('https://api.mercadopago.com/users/me', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    })
+
+    const meData = await meResponse.json()
+
+    if (!meResponse.ok) {
+      throw new Error(`Erro ao consultar usuário Mercado Pago: ${JSON.stringify(meData)}`)
+    }
+
+    console.log('Mercado Pago OAuth conectado:', {
+      app_user_id: userId,
+      oauth_user_id: tokenData.user_id,
+      users_me_id: meData.id,
+      users_me_nickname: meData.nickname,
+      users_me_email: meData.email,
+      live_mode: tokenData.live_mode,
+    })
+
+    const mercadoPagoUserId = String(meData.id || tokenData.user_id || '')
+
+    if (!mercadoPagoUserId) {
+      throw new Error('Não foi possível identificar o usuário Mercado Pago conectado.')
+    }
+
     const supabase = createClient(
       getEnv('SUPABASE_URL'),
       getEnv('SUPABASE_SERVICE_ROLE_KEY'),
@@ -58,7 +96,7 @@ Deno.serve(async (req) => {
       {
         user_id: userId,
         provider: 'mercado_pago',
-        provider_user_id: String(tokenData.user_id || ''),
+        provider_user_id: mercadoPagoUserId,
         public_key: tokenData.public_key || null,
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token || null,
@@ -81,9 +119,11 @@ Deno.serve(async (req) => {
       302,
     )
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erro inesperado.'
+
     return Response.redirect(
       `${getEnv('APP_URL')}/app/configuracoes?mp=error&message=${encodeURIComponent(
-        err.message,
+        message,
       )}`,
       302,
     )

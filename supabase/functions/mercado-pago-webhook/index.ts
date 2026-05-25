@@ -31,7 +31,153 @@ function formatWhatsAppTo(phone: string | null | undefined) {
   return `whatsapp:+${phoneWithCountryCode}`
 }
 
+function isExpiredOrNearExpiration(expiresAt: string | null | undefined) {
+  if (!expiresAt) return false
 
+  const expires = new Date(expiresAt).getTime()
+  const now = Date.now()
+  const fiveMinutes = 5 * 60 * 1000
+
+  return expires <= now + fiveMinutes
+}
+
+async function refreshMercadoPagoToken({
+  supabase,
+  account,
+}: {
+  supabase: any
+  account: any
+}) {
+  const clientId = Deno.env.get('MERCADO_PAGO_CLIENT_ID')
+  const clientSecret = Deno.env.get('MERCADO_PAGO_CLIENT_SECRET')
+
+  if (!account?.refresh_token || !clientId || !clientSecret) {
+    throw new Error('Token Mercado Pago vencido e não é possível renovar. Usuário precisa reconectar.')
+  }
+
+  const body = new URLSearchParams()
+  body.set('grant_type', 'refresh_token')
+  body.set('client_id', clientId)
+  body.set('client_secret', clientSecret)
+  body.set('refresh_token', account.refresh_token)
+
+  const response = await fetch('https://api.mercadopago.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data?.message || 'Erro ao renovar token Mercado Pago.')
+  }
+
+  const expiresAt = data.expires_in
+    ? new Date(Date.now() + Number(data.expires_in) * 1000).toISOString()
+    : account.expires_at
+
+  const { data: updatedAccount, error: updateError } = await supabase
+    .from('user_payment_accounts')
+    .update({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || account.refresh_token,
+      token_type: data.token_type || account.token_type,
+      scope: data.scope || account.scope,
+      live_mode: typeof data.live_mode === 'boolean' ? data.live_mode : account.live_mode,
+      expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', account.id)
+    .select('*')
+    .single()
+
+  if (updateError) throw updateError
+
+  return updatedAccount
+}
+
+async function getAccountByMpUserId({
+  supabase,
+  mpUserId,
+}: {
+  supabase: any
+  mpUserId: string
+}) {
+  const { data: account, error } = await supabase
+    .from('user_payment_accounts')
+    .select('*')
+    .eq('provider_user_id', mpUserId)
+    .eq('provider', 'mercado_pago')
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Erro ao buscar conta MP: ${error.message}`)
+
+  return account ?? null
+}
+
+async function getAccountByPaymentId({
+  supabase,
+  paymentId,
+}: {
+  supabase: any
+  paymentId: string
+}) {
+  const { data: charge, error } = await supabase
+    .from('charges')
+    .select('user_id')
+    .eq('mercado_pago_payment_id', paymentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !charge?.user_id) return null
+
+  const { data: account } = await supabase
+    .from('user_payment_accounts')
+    .select('*')
+    .eq('user_id', charge.user_id)
+    .eq('provider', 'mercado_pago')
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  return account ?? null
+}
+
+async function resolveAccessToken({
+  supabase,
+  mpUserId,
+  paymentId,
+}: {
+  supabase: any
+  mpUserId: string
+  paymentId: string
+}) {
+  // Tenta pelo user_id do MP (formato webhook novo)
+  let account = mpUserId
+    ? await getAccountByMpUserId({ supabase, mpUserId })
+    : null
+
+  // Fallback: busca pela cobrança com esse payment_id (formato IPN antigo)
+  if (!account?.access_token) {
+    account = await getAccountByPaymentId({ supabase, paymentId })
+  }
+
+  if (!account?.access_token) {
+    throw new Error(
+      `Conta Mercado Pago não encontrada. mpUserId=${mpUserId}, paymentId=${paymentId}`,
+    )
+  }
+
+  if (isExpiredOrNearExpiration(account.expires_at)) {
+    const refreshed = await refreshMercadoPagoToken({ supabase, account })
+    return refreshed.access_token as string
+  }
+
+  return account.access_token as string
+}
 
 async function getPaymentFromMercadoPago(paymentId: string, accessToken: string) {
   const response = await fetch(
@@ -183,13 +329,8 @@ async function sendTwilioWhatsAppMessage({
 
 serve(async (req) => {
   try {
-    const accessToken = Deno.env.get('MERCADO_PAGO_ACCESS_TOKEN')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-    if (!accessToken) {
-      throw new Error('MERCADO_PAGO_ACCESS_TOKEN não configurado.')
-    }
 
     if (!supabaseUrl || !serviceRoleKey) {
       throw new Error('Variáveis do Supabase não configuradas.')
@@ -230,6 +371,14 @@ serve(async (req) => {
       })
     }
 
+    // ID do usuário no Mercado Pago — presente no formato webhook novo, ausente no IPN antigo
+    const mpUserId = String(body?.user_id || '')
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey)
+
+    // Resolve o access_token correto: tenta por mpUserId, depois pelo payment_id na tabela de cobranças
+    const accessToken = await resolveAccessToken({ supabase, mpUserId, paymentId })
+
     const payment = await getPaymentFromMercadoPago(paymentId, accessToken)
     const chargeId = getChargeIdFromPayment(payment)
 
@@ -242,8 +391,6 @@ serve(async (req) => {
         payment_status: payment.status,
       })
     }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
 
     const { data: chargeBeforeUpdate, error: chargeBeforeUpdateError } =
       await supabase

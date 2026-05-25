@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -20,16 +22,36 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id } = await req.json()
+    const authHeader = req.headers.get('Authorization') || ''
 
-    if (!user_id) throw new Error('user_id não informado.')
+    const supabase = createClient(
+      getEnv('SUPABASE_URL'),
+      getEnv('SUPABASE_ANON_KEY'),
+      {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+      },
+    )
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado.')
+    }
 
     const params = new URLSearchParams({
       client_id: getEnv('MERCADO_PAGO_CLIENT_ID'),
       response_type: 'code',
       platform_id: 'mp',
       state: encodeState({
-        user_id,
+        user_id: user.id,
+        nonce: crypto.randomUUID(),
         created_at: new Date().toISOString(),
       }),
       redirect_uri: getEnv('MERCADO_PAGO_REDIRECT_URI'),
@@ -46,7 +68,10 @@ Deno.serve(async (req) => {
     )
   } catch (err) {
     return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
+      JSON.stringify({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Erro inesperado.',
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

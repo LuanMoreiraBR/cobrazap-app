@@ -1,6 +1,10 @@
 import { supabase } from './supabaseClient'
 
 export async function getPaymentAccount(userId) {
+  if (!userId) {
+    throw new Error('Usuário não informado.')
+  }
+
   const { data, error } = await supabase
     .from('user_payment_accounts')
     .select(
@@ -14,16 +18,20 @@ export async function getPaymentAccount(userId) {
   return data
 }
 
-export async function startMercadoPagoConnection(userId) {
+export async function startMercadoPagoConnection() {
   const { data, error } = await supabase.functions.invoke(
     'mercado-pago-oauth-start',
     {
-      body: { user_id: userId },
+      body: {},
     },
   )
 
-  if (error) throw error
-  if (!data?.ok) {
+  if (error) {
+    console.error('Erro ao iniciar OAuth Mercado Pago:', error)
+    throw new Error(error.message || 'Erro ao iniciar conexão Mercado Pago.')
+  }
+
+  if (!data?.ok || !data?.url) {
     throw new Error(data?.error || 'Erro ao iniciar conexão Mercado Pago.')
   }
 
@@ -31,6 +39,10 @@ export async function startMercadoPagoConnection(userId) {
 }
 
 export async function disconnectMercadoPago(userId) {
+  if (!userId) {
+    throw new Error('Usuário não informado.')
+  }
+
   const { error } = await supabase
     .from('user_payment_accounts')
     .delete()

@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../services/supabaseClient'
 import { getClients } from '../services/clientsService'
+import { getPaymentAccount } from '../services/paymentAccountService'
 
 import {
   createCharge,
@@ -291,6 +292,7 @@ export default function Charges() {
   const [isRecurringCharge, setIsRecurringCharge] = useState(false)
   const [recurrenceMonths, setRecurrenceMonths] = useState(12)
 
+  const [mpAccount, setMpAccount] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generatingPixId, setGeneratingPixId] = useState(null)
@@ -304,16 +306,18 @@ export default function Charges() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [clientsData, chargesData, supportContactsData] =
+        const [clientsData, chargesData, supportContactsData, mpAccountData] =
           await Promise.all([
             getClients(user.id),
             getCharges(user.id),
             getWhatsappSupportContacts(user.id),
+            getPaymentAccount(user.id),
           ])
 
         setClients(clientsData)
         setCharges(chargesData)
         setSupportContacts(supportContactsData)
+        setMpAccount(mpAccountData)
 
         const defaultIds = supportContactsData
           .filter((contact) => contact.is_default)
@@ -801,6 +805,11 @@ export default function Charges() {
     e.preventDefault()
     resetMessages()
 
+    if (!mpAccount) {
+      setError('Conecte sua conta Mercado Pago em Configurações antes de criar cobranças.')
+      return
+    }
+
     const validationError = validateForm()
     if (validationError) {
       setError(validationError)
@@ -871,6 +880,12 @@ export default function Charges() {
 
   async function handleGeneratePix(charge) {
     resetMessages()
+
+    if (!mpAccount) {
+      setError('Conecte sua conta Mercado Pago em Configurações para gerar PIX.')
+      return
+    }
+
     setGeneratingPixId(charge.id)
 
     try {

@@ -48,7 +48,7 @@ export default function Settings() {
     setConnecting(true)
 
     try {
-      await startMercadoPagoConnection(user.id)
+      await startMercadoPagoConnection()
     } catch (err) {
       setError(err.message || 'Erro ao conectar Mercado Pago')
       setConnecting(false)
