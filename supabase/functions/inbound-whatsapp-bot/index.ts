@@ -711,6 +711,19 @@ Digite apenas o número do cadastro que deseja consultar.`
 Para sua segurança, confirme os 4 últimos números do seu celular cadastrado.`
 }
 
+async function getCobradorNames(supabase: any, userIds: string[]) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, name')
+    .in('id', userIds)
+
+  const map: Record<string, string> = {}
+  for (const row of data || []) {
+    map[row.id] = row.name || 'Cobrador'
+  }
+  return map
+}
+
 async function handlePhoneConfirmation({
   supabase,
   session,
@@ -731,6 +744,37 @@ async function handlePhoneConfirmation({
 Tente novamente digitando apenas os 4 últimos números do celular cadastrado.`
   }
 
+  const clientPairs: Array<{ user_id: string; client_id: string }> =
+    Array.isArray(session.metadata?.client_pairs) ? session.metadata.client_pairs : []
+
+  // Verifica se há múltiplos cobradores (empresas diferentes)
+  const uniqueUserIds = [...new Set(clientPairs.map((p) => p.user_id))]
+
+  if (uniqueUserIds.length > 1) {
+    const cobradorNames = await getCobradorNames(supabase, uniqueUserIds)
+
+    const list = uniqueUserIds
+      .map((uid, i) => `${i + 1}) ${cobradorNames[uid] || 'Cobrador'}`)
+      .join('\n')
+
+    await updateSession({
+      supabase,
+      sessionId: session.id,
+      state: 'selecting_cobrador',
+      metadata: {
+        ...(session.metadata || {}),
+        confirmed_at: new Date().toISOString(),
+        cobrador_user_ids: uniqueUserIds,
+      },
+    })
+
+    return `Identidade confirmada!
+
+Encontrei cobranças de mais de um cobrador para este número. Com qual deles você quer falar?
+
+${list}`
+  }
+
   const updatedSession = await updateSession({
     supabase,
     sessionId: session.id,
@@ -738,6 +782,59 @@ Tente novamente digitando apenas os 4 últimos números do celular cadastrado.`
     metadata: {
       ...(session.metadata || {}),
       confirmed_at: new Date().toISOString(),
+    },
+  })
+
+  return await buildChargesMenu({
+    supabase,
+    session: updatedSession,
+  })
+}
+
+async function handleCobradorSelection({
+  supabase,
+  session,
+  bodyText,
+}: {
+  supabase: any
+  session: any
+  bodyText: string
+}) {
+  const cobradorUserIds: string[] = Array.isArray(session.metadata?.cobrador_user_ids)
+    ? session.metadata.cobrador_user_ids
+    : []
+
+  const selectedIndex = Number(onlyDigits(bodyText)) - 1
+
+  if (
+    !Number.isInteger(selectedIndex) ||
+    selectedIndex < 0 ||
+    selectedIndex >= cobradorUserIds.length
+  ) {
+    const cobradorNames = await getCobradorNames(supabase, cobradorUserIds)
+    const list = cobradorUserIds
+      .map((uid, i) => `${i + 1}) ${cobradorNames[uid] || 'Cobrador'}`)
+      .join('\n')
+
+    return `Não entendi. Digite apenas o número do cobrador:
+
+${list}`
+  }
+
+  const selectedUserId = cobradorUserIds[selectedIndex]
+
+  const clientPairs: Array<{ user_id: string; client_id: string }> =
+    Array.isArray(session.metadata?.client_pairs) ? session.metadata.client_pairs : []
+
+  const filteredPairs = clientPairs.filter((p) => p.user_id === selectedUserId)
+
+  const updatedSession = await updateSession({
+    supabase,
+    sessionId: session.id,
+    state: 'confirmed',
+    metadata: {
+      ...(session.metadata || {}),
+      client_pairs: filteredPairs,
     },
   })
 
@@ -906,6 +1003,16 @@ Deno.serve(async (req) => {
 
     if (session.state === 'waiting_phone_confirmation') {
       const responseText = await handlePhoneConfirmation({
+        supabase,
+        session,
+        bodyText,
+      })
+
+      return twiml(responseText)
+    }
+
+    if (session.state === 'selecting_cobrador') {
+      const responseText = await handleCobradorSelection({
         supabase,
         session,
         bodyText,
