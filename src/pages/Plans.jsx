@@ -357,7 +357,7 @@ export default function Plans() {
                     >
                       {processingCreditPackage === quantity
                         ? 'Gerando checkout...'
-                        : 'Comprar pacote'}
+                        : 'Obter Créditos'}
                     </button>
                   </div>
                 )
@@ -366,6 +366,7 @@ export default function Plans() {
           </section>
         ) : null}
 
+        {!hasActiveSubscription ? (
         <section>
           <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -528,6 +529,7 @@ export default function Plans() {
             })}
           </div>
         </section>
+        ) : null}
 
         <section className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-sm">
           <div className="grid gap-4 md:grid-cols-3">
