@@ -43,6 +43,18 @@ export default function UsageBadge() {
     }
 
     load()
+
+    const interval = setInterval(load, 60_000)
+
+    function onVisibility() {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [user?.id])
 
   const badgeData = useMemo(() => {
