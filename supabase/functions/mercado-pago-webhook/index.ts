@@ -500,6 +500,7 @@ serve(async (req) => {
     }
 
     let twilioResult: any = null
+    let pushResult: any = null
 
     if (isApproved && processedEventInserted) {
       const { error: scheduledError } = await supabase
@@ -528,6 +529,22 @@ serve(async (req) => {
         to,
         body: confirmationMessage,
       })
+
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: chargeBeforeUpdate.user_id,
+            title: 'Pagamento recebido! ✅',
+            body: `${client?.name || 'Cliente'} pagou ${formatCurrencyBRL(chargeBeforeUpdate.amount)}`,
+            url: '/app/cobrancas',
+          }),
+        })
+      } catch (pushErr) {
+        console.error('Erro ao enviar push notification:', pushErr)
+      }
     }
 
     return jsonResponse({

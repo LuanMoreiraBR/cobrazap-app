@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lembrei-pwa-v3'
+const CACHE_NAME = 'lembrei-pwa-v4'
 
 const STATIC_ASSETS = [
   '/',
@@ -31,6 +31,34 @@ self.addEventListener('activate', (event) => {
   )
 
   self.clients.claim()
+})
+
+self.addEventListener('push', (event) => {
+  const data = event.data?.json() || {}
+  const title = data.title || 'Lembrei'
+  const options = {
+    body: data.body || 'Nova notificação',
+    icon: '/icon-512-maskable.png',
+    badge: '/icon-192.png',
+    data: { url: data.url || '/app' },
+    requireInteraction: false,
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = event.notification.data?.url || '/app'
+  event.waitUntil(
+    clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) return client.focus()
+        }
+        if (clients.openWindow) return clients.openWindow(url)
+      }),
+  )
 })
 
 self.addEventListener('fetch', (event) => {

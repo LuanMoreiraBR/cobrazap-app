@@ -14,6 +14,11 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
 import { getPaymentAccount } from '../../services/paymentAccountService'
 import { getUserSubscription } from '../../services/platformBillingService'
+import {
+  getNotificationPermission,
+  isPushSupported,
+  subscribeToPushNotifications,
+} from '../../services/pushNotificationService'
 import UsageBadge from '../UsageBadge'
 
 const navItems = [
@@ -77,9 +82,17 @@ export default function AppLayout() {
       }
     }
 
+    async function requestPushPermission() {
+      if (!user?.id || !isPushSupported()) return
+      if (getNotificationPermission() === 'default') {
+        await subscribeToPushNotifications(user.id)
+      }
+    }
+
     loadProfile()
     checkMpAccount()
     checkSubscription()
+    requestPushPermission()
   }, [user])
 
   const userName =
