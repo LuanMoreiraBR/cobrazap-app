@@ -2,19 +2,21 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { isPlatformAdmin } from '../services/adminService'
+import { requestPasswordReset } from '../services/authService'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const { signIn } = useAuth()
 
-  const [form, setForm] = useState({
-    email: '',
-    password: '',
-  })
-
+  const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const [forgotMode, setForgotMode] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -34,7 +36,6 @@ export default function Login() {
 
       if (userId) {
         const admin = await isPlatformAdmin(userId)
-
         if (admin) {
           navigate('/admin', { replace: true })
           return
@@ -50,56 +51,125 @@ export default function Login() {
     }
   }
 
+  async function handleResetRequest(e) {
+    e.preventDefault()
+    setError('')
+    setResetLoading(true)
+
+    try {
+      await requestPasswordReset(resetEmail)
+      setResetSent(true)
+    } catch (err) {
+      setError(err.message || 'Erro ao enviar email de recuperação.')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
       <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
         <div className="mb-6 flex items-center gap-3">
-          <img
-            src="/icon-lembrei.png"
-            alt="Lembrei"
-            className="h-11 w-11 rounded-2xl"
-          />
-
+          <img src="/icon-lembrei.png" alt="Lembrei" className="h-11 w-11 rounded-2xl" />
           <div>
-            <h1 className="text-3xl font-bold text-[#070D2D]">Entrar</h1>
+            <h1 className="text-3xl font-bold text-[#070D2D]">
+              {forgotMode ? 'Recuperar senha' : 'Entrar'}
+            </h1>
             <p className="text-sm text-slate-500">
-              Acesse sua conta da Lembrei.
+              {forgotMode
+                ? 'Enviaremos um link para redefinir sua senha.'
+                : 'Acesse sua conta da Lembrei.'}
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-          <input
-            type="email"
-            placeholder="Seu email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="input"
-            required
-          />
+        {forgotMode ? (
+          resetSent ? (
+            <div className="mt-8 space-y-4">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                Email enviado! Verifique sua caixa de entrada e clique no link para redefinir sua senha.
+              </div>
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setResetSent(false); setResetEmail('') }}
+                className="w-full text-center text-sm font-semibold text-[#5B4BFF] hover:underline"
+              >
+                Voltar para o login
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleResetRequest} className="mt-8 space-y-4">
+              <input
+                type="email"
+                placeholder="Seu email cadastrado"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                className="input"
+                required
+              />
 
-          <input
-            type="password"
-            placeholder="Sua senha"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="input"
-            required
-          />
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              <button type="submit" disabled={resetLoading} className="btn-primary w-full">
+                {resetLoading ? 'Enviando...' : 'Enviar link de recuperação'}
+              </button>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setError('') }}
+                className="w-full text-center text-sm text-slate-500 hover:text-slate-700"
+              >
+                Voltar para o login
+              </button>
+            </form>
+          )
+        ) : (
+          <>
+            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+              <input
+                type="email"
+                placeholder="Seu email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="input"
+                required
+              />
 
-        <p className="mt-6 text-sm text-slate-600">
-          Ainda não tem conta?{' '}
-          <Link to="/cadastro" className="font-semibold text-[#5B4BFF]">
-            Criar conta
-          </Link>
-        </p>
+              <div className="space-y-1">
+                <input
+                  type="password"
+                  placeholder="Sua senha"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="input"
+                  required
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setForgotMode(true); setError(''); setResetEmail(form.email) }}
+                    className="text-xs text-slate-500 hover:text-[#5B4BFF]"
+                  >
+                    Esqueceu sua senha?
+                  </button>
+                </div>
+              </div>
+
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+              <button type="submit" disabled={loading} className="btn-primary w-full">
+                {loading ? 'Entrando...' : 'Entrar'}
+              </button>
+            </form>
+
+            <p className="mt-6 text-sm text-slate-600">
+              Ainda não tem conta?{' '}
+              <Link to="/cadastro" className="font-semibold text-[#5B4BFF]">
+                Criar conta
+              </Link>
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

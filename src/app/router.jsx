@@ -18,6 +18,7 @@ import AdminRoute from '../components/AdminRoute'
 import AdminUserDetail from '../pages/AdminUserDetail'
 import MyPlan from '../pages/MyPlan'
 import PaymentReturn from '../pages/PaymentReturn'
+import ResetPassword from '../pages/ResetPassword'
 
 export const router = createBrowserRouter([
   {
@@ -57,6 +58,10 @@ export const router = createBrowserRouter([
   {
     path: '/privacidade',
     element: <Privacidade />,
+  },
+  {
+    path: '/nova-senha',
+    element: <ResetPassword />,
   },
   {
     path: '/termos',

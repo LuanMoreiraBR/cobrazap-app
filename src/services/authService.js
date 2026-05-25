@@ -49,3 +49,15 @@ export async function getSession() {
   if (error) throw error
   return data.session
 }
+
+export async function requestPasswordReset(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/nova-senha`,
+  })
+  if (error) throw error
+}
+
+export async function updatePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+}
