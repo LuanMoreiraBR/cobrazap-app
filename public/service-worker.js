@@ -1,33 +1,30 @@
-const CACHE_NAME = 'lembrei-pwa-v4'
+const CACHE_NAME = 'lembrei-pwa-v5'
 
 const STATIC_ASSETS = [
-  '/',
-  '/login',
   '/manifest.webmanifest',
   '/favicon.png',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-512-maskable.png',
 ]
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
 
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS)
-    }),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)),
   )
 })
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
-          .map((cacheName) => caches.delete(cacheName)),
-      )
-    }),
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name)),
+      ),
+    ),
   )
 
   self.clients.claim()
@@ -70,30 +67,26 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) return
 
+  // HTML: sempre rede, fallback offline para cache
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() =>
+        caches.match(request).then((cached) => cached || caches.match('/index.html')),
+      ),
+    )
+    return
+  }
+
+  // Estáticos (imagens, manifest): cache primeiro, atualiza em background
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        const responseClone = response.clone()
-
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseClone)
-        })
-
+    caches.match(request).then((cached) => {
+      const fetchPromise = fetch(request).then((response) => {
+        if (response.ok) {
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()))
+        }
         return response
       })
-      .catch(() => {
-        return caches.match(request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse
-
-          if (request.mode === 'navigate') {
-            return caches.match('/')
-          }
-
-          return new Response('Offline', {
-            status: 503,
-            statusText: 'Offline',
-          })
-        })
-      }),
+      return cached || fetchPromise
+    }),
   )
 })

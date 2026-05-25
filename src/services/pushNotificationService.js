@@ -36,7 +36,7 @@ export async function subscribeToPushNotifications(userId) {
 
     const json = subscription.toJSON()
 
-    await supabase.from('push_subscriptions').upsert(
+    const { error } = await supabase.from('push_subscriptions').upsert(
       {
         user_id: userId,
         endpoint: json.endpoint,
@@ -45,6 +45,11 @@ export async function subscribeToPushNotifications(userId) {
       },
       { onConflict: 'user_id,endpoint' },
     )
+
+    if (error) {
+      console.error('Erro ao salvar inscrição push:', error)
+      return false
+    }
 
     return true
   } catch (err) {
