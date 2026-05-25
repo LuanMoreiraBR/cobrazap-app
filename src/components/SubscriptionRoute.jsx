@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   getUserSubscription,
-  isSubscriptionActive,
 } from '../services/platformBillingService'
 
 export default function SubscriptionRoute({ children }) {
   const { user } = useAuth()
 
   const [loading, setLoading] = useState(true)
+  const [hasSubscription, setHasSubscription] = useState(false)
 
   useEffect(() => {
     async function checkSubscription() {
@@ -19,15 +20,10 @@ export default function SubscriptionRoute({ children }) {
 
       try {
         const subscription = await getUserSubscription(user.id)
-        const active = isSubscriptionActive(subscription)
-
-        console.log('Assinatura do usuário:', {
-          active,
-          subscription,
-          mode: active ? 'paid_plan' : 'free_trial',
-        })
+        setHasSubscription(subscription !== null)
       } catch (error) {
         console.error('Erro ao verificar assinatura:', error)
+        setHasSubscription(false)
       } finally {
         setLoading(false)
       }
@@ -44,6 +40,10 @@ export default function SubscriptionRoute({ children }) {
         </div>
       </div>
     )
+  }
+
+  if (!hasSubscription) {
+    return <Navigate to="/planos" replace />
   }
 
   return children
