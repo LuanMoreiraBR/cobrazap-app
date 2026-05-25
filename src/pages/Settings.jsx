@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle2, Link2, PlugZap, Trash2, Wallet } from 'lucide-react'
+import { Bell, BellRing, CheckCircle2, Link2, PlugZap, Trash2, Wallet } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
   disconnectMercadoPago,
   getPaymentAccount,
   startMercadoPagoConnection,
 } from '../services/paymentAccountService'
+import {
+  getNotificationPermission,
+  isPushSupported,
+  subscribeToPushNotifications,
+} from '../services/pushNotificationService'
 import { supabase } from '../services/supabaseClient'
 
 export default function Settings() {
@@ -17,6 +22,8 @@ export default function Settings() {
   const [success, setSuccess] = useState('')
   const [notifPhone, setNotifPhone] = useState('')
   const [savingPhone, setSavingPhone] = useState(false)
+  const [testingPush, setTestingPush] = useState(false)
+  const [pushPermission, setPushPermission] = useState('default')
 
   async function loadAccount() {
     try {
@@ -59,6 +66,10 @@ export default function Settings() {
   }
 
   useEffect(() => {
+    setPushPermission(getNotificationPermission())
+  }, [])
+
+  useEffect(() => {
     loadAccount()
 
     const params = new URLSearchParams(window.location.search)
@@ -82,6 +93,41 @@ export default function Settings() {
     } catch (err) {
       setError(err.message || 'Erro ao conectar Mercado Pago')
       setConnecting(false)
+    }
+  }
+
+  async function handleEnablePush() {
+    if (!user?.id) return
+    const granted = await subscribeToPushNotifications(user.id)
+    setPushPermission(getNotificationPermission())
+    if (granted) setSuccess('Notificações ativadas com sucesso.')
+    else setError('Permissão negada ou navegador incompatível.')
+  }
+
+  async function handleTestPush() {
+    if (!user?.id) return
+    setTestingPush(true)
+    setError('')
+    setSuccess('')
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          title: 'Teste de notificação ✅',
+          body: 'As notificações push estão funcionando!',
+          url: '/app',
+        }),
+      })
+      const data = await res.json()
+      if (data.sent > 0) setSuccess('Notificação de teste enviada! Verifique seu dispositivo.')
+      else setError('Nenhuma inscrição encontrada. Ative as notificações primeiro.')
+    } catch (err) {
+      setError('Erro ao enviar notificação de teste.')
+    } finally {
+      setTestingPush(false)
     }
   }
 
@@ -173,6 +219,53 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {isPushSupported() ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl bg-violet-50 p-3 text-violet-600">
+              <BellRing size={24} />
+            </div>
+
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-[#070D2D]">
+                Notificações push
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Receba uma notificação no dispositivo sempre que um pagamento for confirmado.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                {pushPermission !== 'granted' ? (
+                  <button
+                    type="button"
+                    onClick={handleEnablePush}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#5B4BFF] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4A3BE8]"
+                  >
+                    <BellRing size={16} />
+                    Ativar notificações
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
+                    <CheckCircle2 size={16} />
+                    Notificações ativas
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleTestPush}
+                  disabled={testingPush || pushPermission !== 'granted'}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {testingPush ? 'Enviando...' : 'Simular notificação'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="card">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
