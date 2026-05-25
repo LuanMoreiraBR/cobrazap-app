@@ -427,20 +427,38 @@ async function getOpenChargesForClient({
   return data || []
 }
 
-async function handlePaidConfirmation({
+async function getOpenChargesForPairs({
   supabase,
-  userId,
-  clientId,
+  clientPairs,
 }: {
   supabase: any
-  userId: string
-  clientId: string
+  clientPairs: Array<{ user_id: string; client_id: string }>
 }) {
-  const charges = await getOpenChargesForClient({
-    supabase,
-    userId,
-    clientId,
+  const results = await Promise.all(
+    clientPairs.map(({ user_id, client_id }) =>
+      getOpenChargesForClient({ supabase, userId: user_id, clientId: client_id }),
+    ),
+  )
+
+  const allCharges = results.flat()
+
+  allCharges.sort((a: any, b: any) => {
+    if (!a.due_date) return 1
+    if (!b.due_date) return -1
+    return a.due_date < b.due_date ? -1 : 1
   })
+
+  return allCharges.slice(0, MAX_CHARGES_TO_LIST)
+}
+
+async function handlePaidConfirmation({
+  supabase,
+  clientPairs,
+}: {
+  supabase: any
+  clientPairs: Array<{ user_id: string; client_id: string }>
+}) {
+  const charges = await getOpenChargesForPairs({ supabase, clientPairs })
 
   if (!charges.length) {
     return `Não encontrei cobranças em aberto para este cadastro.
@@ -473,11 +491,14 @@ async function buildChargesMenu({
   supabase: any
   session: any
 }) {
-  const charges = await getOpenChargesForClient({
-    supabase,
-    userId: session.user_id,
-    clientId: session.client_id,
-  })
+  const pairs: Array<{ user_id: string; client_id: string }> =
+    Array.isArray(session.metadata?.client_pairs) && session.metadata.client_pairs.length
+      ? session.metadata.client_pairs
+      : session.user_id && session.client_id
+        ? [{ user_id: session.user_id, client_id: session.client_id }]
+        : []
+
+  const charges = await getOpenChargesForPairs({ supabase, clientPairs: pairs })
 
   if (!charges.length) {
     await updateSession({
@@ -565,39 +586,35 @@ Verifique se está falando pelo mesmo número cadastrado com o cobrador.`
   }
 
   if (matchingClients.length > 1) {
+    const firstClient = matchingClients[0]
+    const clientPairs = matchingClients.map((c: any) => ({ user_id: c.user_id, client_id: c.id }))
+
     const session = await upsertSession({
       supabase,
       fromPhone,
       fromPhoneDigits,
-      state: 'waiting_client_choice',
+      state: 'waiting_phone_confirmation',
       metadata: {
-        candidate_client_ids: matchingClients.map((client: any) => client.id),
+        client_name: firstClient.name,
+        client_phone_digits: normalizeBrazilPhoneDigits(firstClient.phone_digits || firstClient.phone),
+        client_pairs: clientPairs,
       },
     })
-
-    const list = matchingClients
-      .slice(0, MAX_CHARGES_TO_LIST)
-      .map((client: any, index: number) => `${index + 1}) ${client.name}`)
-      .join('\n')
 
     await logPlatformEvent({
       supabase,
       eventType: 'inbound_whatsapp_multiple_clients',
       status: 'info',
-      message: 'Telefone encontrado em mais de um cadastro.',
+      message: 'Telefone encontrado em mais de um cadastro. Cobranças agregadas.',
       relatedTable: 'inbound_whatsapp_sessions',
       relatedId: session.id,
       requestPayload,
-      responsePayload: {
-        count: matchingClients.length,
-      },
+      responsePayload: { count: matchingClients.length },
     })
 
-    return `Encontrei mais de um cadastro para este WhatsApp.
+    return `Olá, ${firstClient.name}.
 
-Digite o número do cadastro que deseja consultar:
-
-${list}`
+Para sua segurança, confirme os 4 últimos números do seu celular cadastrado.`
   }
 
   const client = matchingClients[0]
@@ -779,13 +796,24 @@ Digite apenas o número da cobrança que deseja pagar.`
     `,
     )
     .eq('id', selectedChargeId)
-    .eq('user_id', session.user_id)
-    .eq('client_id', session.client_id)
     .maybeSingle()
 
   if (error) throw error
 
-  if (!charge) {
+  const validPairs: Array<{ user_id: string; client_id: string }> =
+    Array.isArray(session.metadata?.client_pairs) && session.metadata.client_pairs.length
+      ? session.metadata.client_pairs
+      : session.user_id && session.client_id
+        ? [{ user_id: session.user_id, client_id: session.client_id }]
+        : []
+
+  const isValid =
+    charge &&
+    validPairs.some(
+      (p) => p.user_id === charge.user_id && p.client_id === charge.client_id,
+    )
+
+  if (!isValid) {
     return `Não consegui localizar essa cobrança. Responda MENU para consultar novamente.`
   }
 
@@ -886,11 +914,17 @@ Deno.serve(async (req) => {
       return twiml(responseText)
     }
 
-    if (wantsPaidConfirmation(bodyText) && session.user_id && session.client_id) {
+    const sessionPairs: Array<{ user_id: string; client_id: string }> =
+      Array.isArray(session.metadata?.client_pairs) && session.metadata.client_pairs.length
+        ? session.metadata.client_pairs
+        : session.user_id && session.client_id
+          ? [{ user_id: session.user_id, client_id: session.client_id }]
+          : []
+
+    if (wantsPaidConfirmation(bodyText) && sessionPairs.length) {
       const responseText = await handlePaidConfirmation({
         supabase,
-        userId: session.user_id,
-        clientId: session.client_id,
+        clientPairs: sessionPairs,
       })
 
       return twiml(responseText)
