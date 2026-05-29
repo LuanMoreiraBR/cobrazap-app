@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   CreditCard,
   HelpCircle,
@@ -311,6 +312,7 @@ export default function Charges() {
   const [editingId, setEditingId] = useState(null)
   const [statusFilter, setStatusFilter] = useState('todos')
   const [search, setSearch] = useState('')
+  const [expandedChargeIds, setExpandedChargeIds] = useState(new Set())
   const [form, setForm] = useState(() => createInitialForm())
 
   useEffect(() => {
@@ -1819,204 +1821,186 @@ export default function Charges() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredCharges.map((charge) => (
-                <div
-                  key={charge.id}
-                  className="rounded-2xl border border-slate-200 p-4 transition hover:border-[#5B4BFF]/40 hover:bg-[#5B4BFF]/5"
-                >
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-[#070D2D]">
-                          {charge.client?.name || 'Cliente não informado'}
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              {filteredCharges.map((charge, idx) => {
+                const isOpen = expandedChargeIds.has(charge.id)
+                const toggle = () =>
+                  setExpandedChargeIds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(charge.id)) next.delete(charge.id)
+                    else next.add(charge.id)
+                    return next
+                  })
+                return (
+                  <div
+                    key={charge.id}
+                    className={idx > 0 ? 'border-t border-slate-200' : ''}
+                  >
+                    {/* Summary row */}
+                    <button
+                      type="button"
+                      onClick={toggle}
+                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-slate-50"
+                    >
+                      <ChevronDown
+                        size={16}
+                        className={`shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-[#070D2D]">
+                            {charge.client?.name || 'Cliente não informado'}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${getStatusStyle(charge.computedStatus)}`}>
+                            {getStatusLabel(charge.computedStatus)}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                            {getPaymentTypeLabel(charge)}
+                          </span>
+                          {hasGeneratedPayment(charge) && (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                              Pix gerado
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          {charge.description} &nbsp;·&nbsp; Vence {formatDate(charge.due_date)} &nbsp;·&nbsp;{' '}
+                          <strong className="text-[#070D2D]">{formatCurrency(charge.amount)}</strong>
                         </p>
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusStyle(
-                            charge.computedStatus,
-                          )}`}
-                        >
-                          {getStatusLabel(charge.computedStatus)}
-                        </span>
-
-                        <span className="rounded-full bg-[#5B4BFF]/10 px-3 py-1 text-xs font-semibold text-[#5B4BFF]">
-                          {getMessageTypeLabel(charge.message_type || 'friendly')}
-                        </span>
-
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                          {getPaymentTypeLabel(charge)}
-                        </span>
-
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          Pix
-                        </span>
-
-                        {charge.credit_card_enabled ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                            <CreditCard size={13} />
-                            Cartão habilitado
-                          </span>
-                        ) : null}
-
-                        {Array.isArray(charge.support_whatsapp_contacts) &&
-                        charge.support_whatsapp_contacts.length > 0 ? (
-                          <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
-                            Contato de dúvidas
-                          </span>
-                        ) : null}
-
-                        {hasGeneratedPayment(charge) ? (
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            Pagamento gerado
-                          </span>
-                        ) : null}
                       </div>
+                    </button>
 
-                      <p className="mt-1 text-sm text-slate-600">
-                        {charge.description}
-                      </p>
-
-                      <p className="mt-1 text-sm text-slate-500">
-                        Vence em {formatDate(charge.due_date)} •{' '}
-                        <strong className="text-[#070D2D]">
-                          {formatCurrency(charge.amount)}
-                        </strong>
-                      </p>
-
-                      {Array.isArray(charge.support_whatsapp_contacts) &&
-                      charge.support_whatsapp_contacts.length > 0 ? (
-                        <div className="mt-2 rounded-2xl bg-violet-50 p-3 text-xs text-violet-700">
-                          <strong>Dúvidas? Fale com:</strong>
-
-                          <pre className="mt-1 whitespace-pre-wrap font-sans">
-                            {getSupportContactsText(
-                              charge.support_whatsapp_contacts,
-                            )}
-                          </pre>
+                    {/* Expanded details */}
+                    {isOpen && (
+                      <div className="border-t border-slate-100 bg-slate-50 px-4 pb-4 pt-3">
+                        {/* Badges */}
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="rounded-full bg-[#5B4BFF]/10 px-2.5 py-0.5 text-xs font-semibold text-[#5B4BFF]">
+                            {getMessageTypeLabel(charge.message_type || 'friendly')}
+                          </span>
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Pix</span>
+                          {charge.credit_card_enabled && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                              <CreditCard size={12} /> Cartão habilitado
+                            </span>
+                          )}
+                          {Array.isArray(charge.support_whatsapp_contacts) && charge.support_whatsapp_contacts.length > 0 && (
+                            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
+                              Contato de dúvidas
+                            </span>
+                          )}
                         </div>
-                      ) : null}
 
-                      {charge.payment_type === 'installment' ? (
-                        <p className="mt-1 text-xs text-slate-500">
-                          Dívida original:{' '}
-                          <strong className="text-[#070D2D]">
-                            {formatCurrency(
-                              charge.original_amount || charge.amount,
-                            )}
-                          </strong>
-                        </p>
-                      ) : null}
-
-                      {hasGeneratedPayment(charge) ? (
-                        <div className="mt-3 rounded-2xl border border-[#5B4BFF]/20 bg-[#5B4BFF]/5 p-3 text-sm text-slate-700">
-                          <p className="font-semibold text-[#070D2D]">
-                            Pagamento disponível
+                        {charge.payment_type === 'installment' && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Dívida original: <strong className="text-[#070D2D]">{formatCurrency(charge.original_amount || charge.amount)}</strong>
                           </p>
+                        )}
 
-                          <p className="mt-1 text-xs text-slate-500">
-                            {charge.credit_card_enabled
-                              ? 'O WhatsApp enviará o link seguro do Mercado Pago para o cliente escolher Pix ou cartão.'
-                              : 'O WhatsApp enviará o código Pix copia e cola junto com a cobrança.'}
-                          </p>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {charge.pix_qr_code ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  navigator.clipboard.writeText(
-                                    charge.pix_qr_code,
-                                  )
-                                }
-                                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-[#5B4BFF] ring-1 ring-[#5B4BFF]/20 hover:bg-[#5B4BFF]/10"
-                              >
-                                Copiar Pix
-                              </button>
-                            ) : null}
-
-                            {charge.payment_url ? (
-                              <a
-                                href={charge.payment_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                              >
-                                Abrir pagamento
-                              </a>
-                            ) : null}
+                        {Array.isArray(charge.support_whatsapp_contacts) && charge.support_whatsapp_contacts.length > 0 && (
+                          <div className="mt-2 rounded-xl bg-violet-50 p-3 text-xs text-violet-700">
+                            <strong>Dúvidas? Fale com:</strong>
+                            <pre className="mt-1 whitespace-pre-wrap font-sans">
+                              {getSupportContactsText(charge.support_whatsapp_contacts)}
+                            </pre>
                           </div>
+                        )}
+
+                        {hasGeneratedPayment(charge) && (
+                          <div className="mt-2 rounded-xl border border-[#5B4BFF]/20 bg-white p-3 text-sm">
+                            <p className="font-semibold text-[#070D2D]">Pagamento disponível</p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {charge.credit_card_enabled
+                                ? 'O WhatsApp enviará o link seguro do Mercado Pago.'
+                                : 'O WhatsApp enviará o código Pix copia e cola.'}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {charge.pix_qr_code && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigator.clipboard.writeText(charge.pix_qr_code)}
+                                  className="rounded-xl bg-[#5B4BFF]/10 px-3 py-1.5 text-xs font-semibold text-[#5B4BFF] hover:bg-[#5B4BFF]/20"
+                                >
+                                  Copiar Pix
+                                </button>
+                              )}
+                              {charge.payment_url && (
+                                <a
+                                  href={charge.payment_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  Abrir pagamento
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {charge.computedStatus !== 'pago' && (
+                            <button
+                              type="button"
+                              onClick={() => handleGeneratePix(charge)}
+                              disabled={generatingPixId === charge.id || hasGeneratedPayment(charge)}
+                              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                                hasGeneratedPayment(charge)
+                                  ? 'cursor-default border border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border border-[#5B4BFF]/20 bg-[#5B4BFF]/10 text-[#5B4BFF] hover:bg-[#5B4BFF]/20'
+                              } disabled:opacity-70`}
+                            >
+                              {generatingPixId === charge.id ? 'Gerando...' : hasGeneratedPayment(charge) ? 'Pagamento gerado' : 'Gerar pagamento'}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleSend(charge)}
+                            disabled={charge.computedStatus === 'pago'}
+                            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                              charge.computedStatus === 'pago'
+                                ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                                : 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
+                            }`}
+                          >
+                            <MessageCircle size={14} />
+                            WhatsApp
+                          </button>
+
+                          {charge.computedStatus !== 'pago' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkAsPaid(charge.id)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                            >
+                              <CheckCircle2 size={14} />
+                              Marcar pago
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => { handleEdit(charge); toggle() }}
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-[#5B4BFF] transition hover:bg-[#5B4BFF]/10"
+                          >
+                            <Pencil size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(charge.id)}
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
-                      ) : null}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                      {charge.computedStatus !== 'pago' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleGeneratePix(charge)}
-                          disabled={
-                            generatingPixId === charge.id ||
-                            hasGeneratedPayment(charge)
-                          }
-                          className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                            hasGeneratedPayment(charge)
-                              ? 'cursor-default border border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border border-[#5B4BFF]/20 bg-[#5B4BFF]/10 text-[#5B4BFF] hover:bg-[#5B4BFF]/15'
-                          } disabled:opacity-70`}
-                        >
-                          {generatingPixId === charge.id
-                            ? 'Gerando...'
-                            : hasGeneratedPayment(charge)
-                              ? 'Pagamento gerado'
-                              : 'Gerar pagamento'}
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => handleSend(charge)}
-                        disabled={charge.computedStatus === 'pago'}
-                        className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                          charge.computedStatus === 'pago'
-                            ? 'cursor-not-allowed bg-slate-200 text-slate-400'
-                            : 'bg-[#5B4BFF] text-white hover:bg-[#4A3BE8]'
-                        }`}
-                      >
-                        <MessageCircle size={16} />
-                        {charge.computedStatus === 'pago' ? 'Pago' : 'WhatsApp'}
-                      </button>
-
-                      {charge.computedStatus !== 'pago' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleMarkAsPaid(charge.id)}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                        >
-                          <CheckCircle2 size={16} />
-                          Pago
-                        </button>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(charge)}
-                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#5B4BFF] transition hover:bg-[#5B4BFF]/10"
-                      >
-                        <Pencil size={16} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(charge.id)}
-                        className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
