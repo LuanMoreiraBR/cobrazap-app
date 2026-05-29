@@ -52,6 +52,7 @@ import {
 
 import { getUsageSummary } from '../services/usageService'
 import { getTemplates } from '../services/templatesService'
+import { getGroups } from '../services/clientGroupsService'
 
 function getTodayInputDate() {
   const now = new Date()
@@ -295,6 +296,9 @@ export default function Charges() {
   const [isRecurringCharge, setIsRecurringCharge] = useState(false)
   const [recurrenceMonths, setRecurrenceMonths] = useState(12)
 
+  const [groups, setGroups] = useState([])
+  const [chargeMode, setChargeMode] = useState('individual')
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [mpAccount, setMpAccount] = useState(null)
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
@@ -312,16 +316,18 @@ export default function Charges() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [clientsData, chargesData, supportContactsData, mpAccountData, templatesData] =
+        const [clientsData, chargesData, supportContactsData, mpAccountData, templatesData, groupsData] =
           await Promise.all([
             getClients(user.id),
             getCharges(user.id),
             getWhatsappSupportContacts(user.id),
             getPaymentAccount(user.id),
             getTemplates(user.id).catch(() => []),
+            getGroups(user.id).catch(() => []),
           ])
 
         setTemplates(templatesData)
+        setGroups(groupsData)
 
         setClients(clientsData)
         setCharges(chargesData)
@@ -478,6 +484,8 @@ export default function Charges() {
     setEditingId(null)
     setIsRecurringCharge(false)
     setRecurrenceMonths(12)
+    setChargeMode('individual')
+    setSelectedGroupId('')
 
     const defaultIds = supportContacts
       .filter((contact) => contact.is_default)
@@ -487,7 +495,11 @@ export default function Charges() {
   }
 
   function validateForm() {
-    if (!form.client_id) return 'Selecione um cliente.'
+    if (chargeMode === 'group') {
+      if (!selectedGroupId) return 'Selecione um grupo.'
+    } else {
+      if (!form.client_id) return 'Selecione um cliente.'
+    }
     if (!form.description.trim()) return 'Informe a descrição.'
     if (!form.amount || Number(form.amount) <= 0) {
       return 'Informe um valor válido.'
@@ -822,6 +834,31 @@ export default function Charges() {
     )
   }
 
+  async function createGroupCharges() {
+    const group = groups.find((g) => g.id === selectedGroupId)
+    if (!group) throw new Error('Grupo não encontrado.')
+    const members = group.members || []
+    if (members.length === 0) throw new Error('O grupo não tem clientes.')
+
+    const createdCharges = []
+    for (const member of members) {
+      const clientId = member.client_id
+      const newCharge = await createCharge({
+        ...buildBasePayload(),
+        client_id: clientId,
+      })
+      const chargeWithPix = await createPixPaymentForCharge(newCharge.id, user.id)
+      await syncAutomation(chargeWithPix)
+      const finalCharge = await sendWhatsAppNowIfNeeded(chargeWithPix)
+      createdCharges.push(finalCharge)
+    }
+
+    setCharges((current) => [...createdCharges, ...current])
+    setSuccess(
+      `Cobranças do grupo criadas: ${createdCharges.length} cliente(s) com pagamento e automações programadas.`,
+    )
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     resetMessages()
@@ -883,6 +920,8 @@ export default function Charges() {
         )
 
         setSuccess('Cobrança atualizada, pagamento gerado e automações recriadas.')
+      } else if (chargeMode === 'group') {
+        await createGroupCharges()
       } else if (form.payment_type === 'installment') {
         await createInstallmentCharges()
       } else if (isRecurringCharge) {
@@ -1097,20 +1136,53 @@ export default function Charges() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <select
-            value={form.client_id}
-            onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-            className="input"
-          >
-            <option value="">Selecione um cliente</option>
+        {!editingId && groups.length > 0 && (
+          <div className="mb-4 flex gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
+            <button
+              type="button"
+              onClick={() => setChargeMode('individual')}
+              className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${chargeMode === 'individual' ? 'bg-white text-[#5B4BFF] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Cliente individual
+            </button>
+            <button
+              type="button"
+              onClick={() => { setChargeMode('group'); setSelectedGroupId('') }}
+              className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${chargeMode === 'group' ? 'bg-white text-[#5B4BFF] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Grupo de clientes
+            </button>
+          </div>
+        )}
 
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-4 md:grid-cols-2">
+          {chargeMode === 'group' && !editingId ? (
+            <select
+              value={selectedGroupId}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className="input"
+            >
+              <option value="">Selecione um grupo</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} ({(g.members || []).length} cliente(s))
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={form.client_id}
+              onChange={(e) => setForm({ ...form, client_id: e.target.value })}
+              className="input"
+            >
+              <option value="">Selecione um cliente</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           <select
             value={form.message_type}
@@ -1203,7 +1275,7 @@ export default function Charges() {
             </p>
           </div>
 
-          {!editingId ? (
+          {!editingId && chargeMode !== 'group' ? (
             <>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-[#070D2D]">
@@ -1313,7 +1385,7 @@ export default function Charges() {
           </div>
         </div>
 
-        {!editingId && form.payment_type === 'single' ? (
+        {!editingId && chargeMode !== 'group' && form.payment_type === 'single' ? (
           <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -1671,11 +1743,13 @@ export default function Charges() {
               ? 'Salvando...'
               : editingId
                 ? 'Atualizar cobrança'
-                : form.payment_type === 'installment'
-                  ? 'Salvar parcelamento'
-                  : isRecurringCharge
-                    ? 'Salvar recorrência'
-                    : 'Salvar cobrança'}
+                : chargeMode === 'group'
+                  ? 'Cobrar grupo'
+                  : form.payment_type === 'installment'
+                    ? 'Salvar parcelamento'
+                    : isRecurringCharge
+                      ? 'Salvar recorrência'
+                      : 'Salvar cobrança'}
           </button>
 
           {editingId ? (

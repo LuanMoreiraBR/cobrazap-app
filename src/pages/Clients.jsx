@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ClipboardList,
   Download,
+  FolderOpen,
   Pencil,
   Phone,
   Search,
@@ -20,6 +21,12 @@ import {
   getClients,
   updateClient,
 } from '../services/clientsService'
+import {
+  createGroup,
+  deleteGroup,
+  getGroups,
+  updateGroup,
+} from '../services/clientGroupsService'
 import { getUsageSummary } from '../services/usageService'
 import { formatPhone, onlyDigits } from '../utils/format'
 
@@ -82,8 +89,12 @@ function parseCSV(text) {
     .filter((c) => c.name && c.phone.length >= 10)
 }
 
+const initialGroupForm = { name: '', clientIds: [] }
+
 export default function Clients() {
   const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState('clientes')
+
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -93,6 +104,15 @@ export default function Clients() {
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(initialForm)
   const [usage, setUsage] = useState(null)
+
+  // Groups state
+  const [groups, setGroups] = useState([])
+  const [groupForm, setGroupForm] = useState(initialGroupForm)
+  const [editingGroupId, setEditingGroupId] = useState(null)
+  const [savingGroup, setSavingGroup] = useState(false)
+  const [groupError, setGroupError] = useState('')
+  const [groupSuccess, setGroupSuccess] = useState('')
+  const [groupClientSearch, setGroupClientSearch] = useState('')
 
   // Import state
   const [importContacts, setImportContacts] = useState([])
@@ -105,8 +125,12 @@ export default function Clients() {
   useEffect(() => {
     async function loadClients() {
       try {
-        const data = await getClients(user.id)
-        setClients(data)
+        const [clientsData, groupsData] = await Promise.all([
+          getClients(user.id),
+          getGroups(user.id).catch(() => []),
+        ])
+        setClients(clientsData)
+        setGroups(groupsData)
       } catch (err) {
         setError(err.message || 'Erro ao carregar clientes')
       } finally {
@@ -145,6 +169,14 @@ export default function Clients() {
     () => clients.filter((c) => c.notes?.trim()).length,
     [clients],
   )
+
+  const filteredGroupClients = useMemo(() => {
+    const term = groupClientSearch.trim().toLowerCase()
+    if (!term) return clients
+    return clients.filter(
+      (c) => c.name?.toLowerCase().includes(term) || c.phone?.includes(term),
+    )
+  }, [clients, groupClientSearch])
 
   function resetMessages() {
     setError('')
@@ -216,6 +248,75 @@ export default function Clients() {
       setSuccess('Cliente excluído com sucesso.')
     } catch (err) {
       setError(err.message || 'Erro ao excluir cliente')
+    }
+  }
+
+  // ── Groups ──────────────────────────────────────────────
+
+  function resetGroupForm() {
+    setGroupForm(initialGroupForm)
+    setEditingGroupId(null)
+    setGroupClientSearch('')
+  }
+
+  function toggleGroupClient(clientId) {
+    setGroupForm((prev) => ({
+      ...prev,
+      clientIds: prev.clientIds.includes(clientId)
+        ? prev.clientIds.filter((id) => id !== clientId)
+        : [...prev.clientIds, clientId],
+    }))
+  }
+
+  async function handleGroupSubmit(e) {
+    e.preventDefault()
+    setGroupError('')
+    setGroupSuccess('')
+    if (!groupForm.name.trim()) { setGroupError('Informe um nome para o grupo.'); return }
+    if (groupForm.clientIds.length === 0) { setGroupError('Selecione ao menos um cliente.'); return }
+
+    setSavingGroup(true)
+    try {
+      if (editingGroupId) {
+        await updateGroup({ id: editingGroupId, user_id: user.id, name: groupForm.name.trim(), clientIds: groupForm.clientIds })
+        const updated = await getGroups(user.id)
+        setGroups(updated)
+        setGroupSuccess('Grupo atualizado com sucesso.')
+      } else {
+        const newGroup = await createGroup({ user_id: user.id, name: groupForm.name.trim(), clientIds: groupForm.clientIds })
+        const updated = await getGroups(user.id)
+        setGroups(updated)
+        setGroupSuccess('Grupo criado com sucesso.')
+      }
+      resetGroupForm()
+    } catch (err) {
+      setGroupError(err.message || 'Erro ao salvar grupo.')
+    } finally {
+      setSavingGroup(false)
+    }
+  }
+
+  function handleGroupEdit(group) {
+    setGroupError('')
+    setGroupSuccess('')
+    setEditingGroupId(group.id)
+    setGroupForm({
+      name: group.name,
+      clientIds: (group.members || []).map((m) => m.client_id),
+    })
+    setGroupClientSearch('')
+  }
+
+  async function handleGroupDelete(id) {
+    if (!window.confirm('Deseja excluir este grupo?')) return
+    setGroupError('')
+    try {
+      await deleteGroup(id, user.id)
+      setGroups((prev) => prev.filter((g) => g.id !== id))
+      if (editingGroupId === id) resetGroupForm()
+      setGroupSuccess('Grupo excluído.')
+    } catch (err) {
+      setGroupError(err.message || 'Erro ao excluir grupo.')
     }
   }
 
@@ -315,6 +416,27 @@ export default function Clients() {
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-1.5">
+        <button
+          type="button"
+          onClick={() => setActiveTab('clientes')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === 'clientes' ? 'bg-[#5B4BFF] text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+        >
+          <Users size={16} />
+          Clientes
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('grupos')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === 'grupos' ? 'bg-[#5B4BFF] text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+        >
+          <FolderOpen size={16} />
+          Grupos de cobrança
+        </button>
+      </div>
+
+      {activeTab === 'clientes' && <>
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
         <StatBox title="Total de clientes" value={clients.length} icon={Users} className="bg-[#5B4BFF]/10 text-[#5B4BFF]" />
@@ -602,6 +724,179 @@ export default function Clients() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      </>}
+
+      {activeTab === 'grupos' && (
+        <div className="space-y-6">
+          {/* Group form */}
+          <form onSubmit={handleGroupSubmit} className="card">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#070D2D]">
+                  {editingGroupId ? 'Editar grupo' : 'Novo grupo de cobrança'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Dê um nome ao grupo e selecione os clientes. Na hora de cobrar, todos receberão a mesma mensagem.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-[#5B4BFF]/10 p-3 text-[#5B4BFF]">
+                <FolderOpen size={22} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Nome do grupo (ex: Alunos Janeiro)"
+                value={groupForm.name}
+                onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+                className="input w-full"
+              />
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-semibold text-[#070D2D]">
+                    Clientes do grupo
+                    {groupForm.clientIds.length > 0 && (
+                      <span className="ml-2 rounded-full bg-[#5B4BFF]/10 px-2 py-0.5 text-xs font-bold text-[#5B4BFF]">
+                        {groupForm.clientIds.length} selecionado(s)
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar..."
+                      value={groupClientSearch}
+                      onChange={(e) => setGroupClientSearch(e.target.value)}
+                      className="rounded-xl border border-slate-200 py-1.5 pl-8 pr-3 text-xs outline-none focus:border-[#5B4BFF]"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-56 overflow-y-auto rounded-2xl border border-slate-200">
+                  {filteredGroupClients.length === 0 ? (
+                    <p className="p-4 text-center text-sm text-slate-400">Nenhum cliente encontrado.</p>
+                  ) : (
+                    filteredGroupClients.map((client) => (
+                      <label
+                        key={client.id}
+                        className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={groupForm.clientIds.includes(client.id)}
+                          onChange={() => toggleGroupClient(client.id)}
+                          className="h-4 w-4 accent-[#5B4BFF]"
+                        />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#5B4BFF]/10 text-sm font-bold text-[#5B4BFF]">
+                          {client.name?.charAt(0)?.toUpperCase() || 'C'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-[#070D2D]">{client.name}</p>
+                          <p className="text-xs text-slate-500">{formatPhone(client.phone)}</p>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {groupError && (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {groupError}
+              </div>
+            )}
+            {groupSuccess && (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                {groupSuccess}
+              </div>
+            )}
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={savingGroup}
+                className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingGroup ? 'Salvando...' : editingGroupId ? 'Atualizar grupo' : 'Criar grupo'}
+              </button>
+              {editingGroupId && (
+                <button type="button" onClick={resetGroupForm} className="btn-secondary inline-flex items-center gap-2">
+                  <X size={16} />
+                  Cancelar edição
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* Groups list */}
+          <div className="card">
+            <h2 className="mb-4 text-xl font-semibold text-[#070D2D]">Grupos criados</h2>
+            {groups.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                <FolderOpen className="mx-auto text-[#5B4BFF]" size={34} />
+                <p className="mt-3 font-semibold text-[#070D2D]">Nenhum grupo criado</p>
+                <p className="mt-1 text-sm text-slate-500">Crie um grupo para cobrar vários clientes de uma vez.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    className="rounded-2xl border border-slate-200 p-4 transition hover:border-[#5B4BFF]/40 hover:bg-[#5B4BFF]/5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <FolderOpen size={16} className="text-[#5B4BFF]" />
+                          <h3 className="font-semibold text-[#070D2D]">{group.name}</h3>
+                          <span className="rounded-full bg-[#5B4BFF]/10 px-2 py-0.5 text-xs font-semibold text-[#5B4BFF]">
+                            {(group.members || []).length} cliente(s)
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(group.members || []).slice(0, 6).map((m) => (
+                            <span
+                              key={m.client_id}
+                              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-600"
+                            >
+                              {m.client?.name || 'Cliente'}
+                            </span>
+                          ))}
+                          {(group.members || []).length > 6 && (
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-400">
+                              +{(group.members || []).length - 6} mais
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGroupEdit(group)}
+                          className="rounded-xl border border-slate-200 p-2 text-[#5B4BFF] transition hover:bg-[#5B4BFF]/10"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGroupDelete(group.id)}
+                          className="rounded-xl border border-slate-200 p-2 text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
