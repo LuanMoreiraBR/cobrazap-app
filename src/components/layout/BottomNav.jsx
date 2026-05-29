@@ -14,9 +14,9 @@ import {
 
 const bottomItems = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/app/clientes', label: 'Clientes', icon: Users },
-  { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
-  { to: '/app/automacoes', label: 'Automações', icon: BellRing },
+  { to: '/app/clientes', label: 'Clientes', icon: Users, tourId: 'nav-clientes' },
+  { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet, tourId: 'nav-cobrancas' },
+  { to: '/app/automacoes', label: 'Automações', icon: BellRing, tourId: 'nav-automacoes' },
 ]
 
 const drawerGroups = [
@@ -27,14 +27,14 @@ const drawerGroups = [
       { to: '/app/clientes', label: 'Clientes', icon: Users },
       { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
       { to: '/app/automacoes', label: 'Automações', icon: BellRing },
-      { to: '/app/templates', label: 'Templates', icon: FileText },
+      { to: '/app/templates', label: 'Templates', icon: FileText, tourId: 'nav-templates' },
     ],
   },
   {
     title: 'Conta',
     items: [
       { to: '/app/plano', label: 'Plano', icon: CreditCard },
-      { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap },
+      { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap, tourId: 'nav-configuracoes' },
     ],
   },
 ]
@@ -57,6 +57,7 @@ export default function BottomNav({ userName, hasPaidPlan, onLogout }) {
               key={item.to}
               to={item.to}
               end={item.end}
+              data-tour={item.tourId}
               className="flex-1 flex flex-col items-center justify-center gap-1"
             >
               {({ isActive }) => (

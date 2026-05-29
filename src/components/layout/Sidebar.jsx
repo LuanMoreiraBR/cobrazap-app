@@ -6,17 +6,17 @@ const navGroups = [
     title: 'Principal',
     items: [
       { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
-      { to: '/app/clientes', label: 'Clientes', icon: Users },
-      { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
-      { to: '/app/automacoes', label: 'Automações', icon: BellRing },
-      { to: '/app/templates', label: 'Templates', icon: FileText },
+      { to: '/app/clientes', label: 'Clientes', icon: Users, tourId: 'nav-clientes' },
+      { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet, tourId: 'nav-cobrancas' },
+      { to: '/app/automacoes', label: 'Automações', icon: BellRing, tourId: 'nav-automacoes' },
+      { to: '/app/templates', label: 'Templates', icon: FileText, tourId: 'nav-templates' },
     ],
   },
   {
     title: 'Conta',
     items: [
       { to: '/app/plano', label: 'Plano', icon: CreditCard },
-      { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap },
+      { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap, tourId: 'nav-configuracoes' },
     ],
   },
 ]
@@ -58,6 +58,7 @@ export default function Sidebar({ userName, hasPaidPlan, onLogout }) {
                       <NavLink to={item.to} end={item.end} className="block">
                         {({ isActive }) => (
                           <div
+                            data-tour={item.tourId}
                             className={`relative flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition ${
                               isActive
                                 ? 'bg-[#5B4BFF]/10 text-[#5B4BFF]'
