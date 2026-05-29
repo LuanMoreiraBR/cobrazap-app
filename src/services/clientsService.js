@@ -94,3 +94,50 @@ export async function deleteClient(id, userId) {
 
   if (error) throw error
 }
+
+export async function createClientsBatch(userId, contacts) {
+  const { data: subscription } = await supabase
+    .from('user_subscriptions')
+    .select('*, plan:platform_plans(*)')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const hasActivePlan =
+    subscription?.status === 'active' &&
+    (!subscription.current_period_end ||
+      new Date(subscription.current_period_end) > new Date())
+
+  const maxClients = hasActivePlan ? Number(subscription?.plan?.max_clients || 0) : 10
+
+  const { count: currentCount } = await supabase
+    .from('clients')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+
+  const current = Number(currentCount || 0)
+  const available = maxClients > 0 ? maxClients - current : contacts.length
+
+  if (available <= 0) {
+    throw new Error(
+      hasActivePlan
+        ? `Seu plano permite até ${maxClients} clientes. Limite atingido.`
+        : `Seu teste grátis permite até ${maxClients} clientes. Faça upgrade para importar mais.`,
+    )
+  }
+
+  const toInsert = contacts.slice(0, available).map((c) => ({
+    user_id: userId,
+    name: c.name,
+    phone: c.phone,
+    notes: c.notes || '',
+  }))
+
+  const { data, error } = await supabase.from('clients').insert(toInsert).select()
+  if (error) throw error
+
+  return {
+    data,
+    imported: data.length,
+    truncated: contacts.length - toInsert.length,
+  }
+}
