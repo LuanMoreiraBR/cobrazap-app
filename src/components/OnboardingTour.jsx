@@ -80,7 +80,7 @@ function autoPlace(r) {
 }
 
 export function useOnboardingTour(userId) {
-  const key = `lembrei_tour_v1_${userId}`
+  const key = `lembrei_tour_v2_${userId}`
   const [show, setShow] = useState(() => Boolean(userId && !localStorage.getItem(key)))
   function finish() {
     if (userId) localStorage.setItem(key, '1')
