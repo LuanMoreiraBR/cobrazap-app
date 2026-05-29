@@ -30,7 +30,7 @@ export default function PeriodFilter({
   setReferenceDate,
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
       <div>
         <p className="text-sm font-semibold text-[#070D2D]">
           Filtro de período
@@ -40,7 +40,7 @@ export default function PeriodFilter({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+      <div className="grid w-full min-w-0 gap-3 sm:grid-cols-[160px_1fr]">
         <select
           value={period}
           onChange={(e) => setPeriod(e.target.value)}

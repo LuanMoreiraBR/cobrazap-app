@@ -26,7 +26,6 @@ export default function Plans() {
 
   const [plans, setPlans] = useState([])
   const [subscription, setSubscription] = useState(null)
-  const [installments, setInstallments] = useState(1)
   const [loading, setLoading] = useState(true)
   const [processingPlanId, setProcessingPlanId] = useState(null)
   const [processingCreditPackage, setProcessingCreditPackage] = useState(null)
@@ -78,7 +77,6 @@ export default function Plans() {
       const result = await createPlatformCheckout({
         userId: user.id,
         planId,
-        installments,
       })
 
       window.location.href = result.payment_url
@@ -97,7 +95,6 @@ export default function Plans() {
       const result = await createMessageCreditCheckout({
         userId: user.id,
         quantity,
-        installments,
       })
 
       window.location.href = result.payment_url
@@ -163,11 +160,6 @@ export default function Plans() {
                 <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
                   <p className="text-2xl font-black">Pix</p>
                   <p className="mt-1 text-xs text-slate-300">pagamento rápido</p>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-                  <p className="text-2xl font-black">12x</p>
-                  <p className="mt-1 text-xs text-slate-300">no cartão</p>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
@@ -244,33 +236,7 @@ export default function Plans() {
           </div>
         ) : null}
 
-        <section className="grid gap-5 lg:grid-cols-[0.72fr_1.28fr]">
-          <div className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-sm">
-            <h2 className="text-2xl font-black tracking-tight text-[#070D2D]">
-              Parcelamento
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Escolha a quantidade de parcelas. As condições finais aparecem no checkout do Mercado Pago.
-            </p>
-
-            <label className="mt-6 block text-sm font-black text-[#070D2D]">
-              Parcelas no cartão
-            </label>
-
-            <select
-              value={installments}
-              onChange={(e) => setInstallments(Number(e.target.value))}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-[#070D2D] outline-none focus:border-[#5B4BFF] focus:ring-4 focus:ring-[#5B4BFF]/10"
-            >
-              {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => (
-                <option key={item} value={item}>
-                  {item}x no cartão
-                </option>
-              ))}
-            </select>
-          </div>
-
+        <section>
           <div className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
