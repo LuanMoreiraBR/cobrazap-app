@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import {
-  AlertTriangle,
-  LayoutDashboard,
-  Users,
-  Wallet,
-  LogOut,
-  BellRing,
-  PlugZap,
-  CreditCard,
-} from 'lucide-react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../services/supabaseClient'
 import { getPaymentAccount } from '../../services/paymentAccountService'
@@ -20,23 +11,8 @@ import {
   subscribeToPushNotifications,
 } from '../../services/pushNotificationService'
 import UsageBadge from '../UsageBadge'
-
-const navItems = [
-  { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/app/clientes', label: 'Clientes', icon: Users },
-  { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
-  { to: '/app/automacoes', label: 'Automações', icon: BellRing },
-  { to: '/app/plano', label: 'Plano', icon: CreditCard },
-  { to: '/app/configuracoes', label: 'Configurações', icon: PlugZap },
-  
-]
-
-const navClass = ({ isActive }) =>
-  `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-    isActive
-      ? 'bg-[#5B4BFF] text-white shadow-sm'
-      : 'text-slate-700 hover:bg-[#5B4BFF]/10 hover:text-[#5B4BFF]'
-  }`
+import Sidebar from './Sidebar'
+import BottomNav from './BottomNav'
 
 export default function AppLayout() {
   const navigate = useNavigate()
@@ -44,21 +20,17 @@ export default function AppLayout() {
   const { user, signOut } = useAuth()
 
   const [profileName, setProfileName] = useState('')
-  const [openUserMenu, setOpenUserMenu] = useState(false)
-  const [openMobileMenu, setOpenMobileMenu] = useState(false)
   const [mpConnected, setMpConnected] = useState(null)
   const [hasPaidPlan, setHasPaidPlan] = useState(true)
 
   useEffect(() => {
     async function loadProfile() {
       if (!user?.id) return
-
       const { data } = await supabase
         .from('profiles')
         .select('name')
         .eq('id', user.id)
         .maybeSingle()
-
       setProfileName(data?.name || '')
     }
 
@@ -109,12 +81,8 @@ export default function AppLayout() {
     navigate('/login')
   }
 
-  function closeMobileMenu() {
-    setOpenMobileMenu(false)
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50">
       <style>{`
         @keyframes plan-attention {
           0%, 80%, 100% { transform: rotate(0deg); }
@@ -129,200 +97,51 @@ export default function AppLayout() {
         }
         .plan-shake { animation: plan-attention 3.5s ease-in-out infinite; }
       `}</style>
-      {/* MENU MOBILE */}
-      <div className="fixed left-4 top-4 z-50 md:hidden">
-        <button
-          type="button"
-          onClick={() => setOpenMobileMenu((current) => !current)}
-          className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200"
-        >
-          <img
-            src="/icon-lembrei.png"
-            alt="Lembrei"
-            className="h-8 w-8 rounded-xl"
-          />
-        </button>
 
-        {openMobileMenu ? (
-          <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
-            <div className="mb-3 flex items-center gap-3 border-b border-slate-100 pb-3">
-              <img
-                src="/icon-lembrei.png"
-                alt="Lembrei"
-                className="h-9 w-9 rounded-xl"
-              />
+      <Sidebar userName={userName} hasPaidPlan={hasPaidPlan} onLogout={handleLogout} />
 
-              <div>
-                <p className="font-bold text-[#070D2D]">Lembrei</p>
-                <p className="text-xs text-slate-500">Cobrança automática</p>
-              </div>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-14 md:pt-0">
+        <div className="p-4 md:p-8 pb-24 md:pb-8 max-w-7xl mx-auto">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
+                Painel
+              </p>
+              <h2 className="text-xl font-bold text-[#070D2D]">Olá, {userName}</h2>
             </div>
-
-            <nav className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                const isPlanItem = item.to === '/app/plano' && !hasPaidPlan
-
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    onClick={closeMobileMenu}
-                    className={navClass}
-                  >
-                    <Icon
-                      size={18}
-                      className={isPlanItem ? 'plan-shake text-orange-500' : ''}
-                    />
-                    <span className={isPlanItem ? 'font-bold text-orange-500' : ''}>
-                      {item.label}
-                    </span>
-                  </NavLink>
-                )
-              })}
-            </nav>
+            <div className="flex justify-start md:justify-end">
+              <UsageBadge />
+            </div>
           </div>
-        ) : null}
-      </div>
 
-      {/* USUÁRIO MOBILE */}
-      <div className="fixed right-4 top-4 z-50 md:hidden">
-        <button
-          type="button"
-          onClick={() => setOpenUserMenu((current) => !current)}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm"
-        >
-          {userInitial}
-        </button>
-
-        {openUserMenu ? (
-          <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-slate-200">
-            <p className="text-xs text-slate-500">Usuário atual</p>
-
-            <p className="mt-1 break-words text-sm font-semibold text-[#070D2D]">
-              {userName}
-            </p>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
-            >
-              <LogOut size={15} />
-              Sair
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {/* SIDEBAR DESKTOP SOBREPOSTA */}
-      <aside className="group fixed left-0 top-0 z-40 hidden h-screen w-20 flex-col border-r border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:w-64 md:flex">
-        <div className="mb-8 flex items-center gap-3 overflow-hidden">
-          <img
-            src="/icon-lembrei.png"
-            alt="Lembrei"
-            className="h-11 w-11 shrink-0 rounded-2xl bg-white shadow-sm"
-          />
-
-          <div className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-            <h1 className="text-2xl font-bold text-[#070D2D]">Lembrei</h1>
-            <p className="text-sm text-slate-500">Cobrança automática</p>
-          </div>
-        </div>
-
-        <nav className="space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isPlanItem = item.to === '/app/plano' && !hasPaidPlan
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={navClass}
-              >
-                <Icon
-                  size={19}
-                  className={`shrink-0${isPlanItem ? ' plan-shake text-orange-500' : ''}`}
-                />
-
-                <span className={`whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100${isPlanItem ? ' font-bold text-orange-500' : ''}`}>
-                  {item.label}
-                </span>
-              </NavLink>
-            )
-          })}
-        </nav>
-
-        <div className="mt-auto space-y-3 pt-8">
-          <div className="overflow-visible">
-            <div className="flex items-center gap-3 rounded-2xl px-1 py-2 transition group-hover:bg-[#5B4BFF]/10">
-              <div className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#5B4BFF] text-sm font-bold text-white shadow-sm">
-                {userInitial}
-              </div>
-
-              <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                <p className="text-xs text-slate-500">Usuário atual</p>
-
-                <p className="truncate text-sm font-semibold text-[#070D2D]">
-                  {userName}
+          {mpConnected === false && location.pathname !== '/app/configuracoes' && (
+            <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <AlertTriangle size={18} className="shrink-0 text-amber-600" />
+                <p className="text-sm font-medium text-amber-800">
+                  Você ainda não conectou sua conta Mercado Pago. Sem isso, não é possível gerar
+                  PIX para as cobranças.
                 </p>
               </div>
+              <Link
+                to="/app/configuracoes"
+                className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+              >
+                Conectar agora
+              </Link>
             </div>
-          </div>
+          )}
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            <LogOut size={18} className="shrink-0" />
-
-            <span className="whitespace-nowrap opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-              Sair
-            </span>
-          </button>
+          <Outlet />
         </div>
-      </aside>
-
-      <main className="min-h-screen overflow-x-hidden p-4 pt-20 md:p-8 md:pl-28">
-        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#5B4BFF]">
-              Painel
-            </p>
-
-            <h2 className="text-xl font-bold text-[#070D2D]">
-              Olá, {userName}
-            </h2>
-          </div>
-
-          <div className="flex justify-start md:justify-end">
-            <UsageBadge />
-          </div>
-        </div>
-
-        {mpConnected === false && location.pathname !== '/app/configuracoes' && (
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-            <div className="flex items-center gap-3">
-              <AlertTriangle size={18} className="shrink-0 text-amber-600" />
-              <p className="text-sm font-medium text-amber-800">
-                Você ainda não conectou sua conta Mercado Pago. Sem isso, não é possível gerar PIX para as cobranças.
-              </p>
-            </div>
-            <Link
-              to="/app/configuracoes"
-              className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
-            >
-              Conectar agora
-            </Link>
-          </div>
-        )}
-
-        <Outlet />
       </main>
+
+      <BottomNav
+        userName={userName}
+        userInitial={userInitial}
+        hasPaidPlan={hasPaidPlan}
+        onLogout={handleLogout}
+      />
     </div>
   )
 }
