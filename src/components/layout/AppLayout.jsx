@@ -11,6 +11,7 @@ import {
   subscribeToPushNotifications,
 } from '../../services/pushNotificationService'
 import UsageBadge from '../UsageBadge'
+import OnboardingTour, { useOnboardingTour } from '../OnboardingTour'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
 
@@ -66,6 +67,8 @@ export default function AppLayout() {
     checkSubscription()
     requestPushPermission()
   }, [user])
+
+  const { show: showTour, finish: finishTour } = useOnboardingTour(user?.id)
 
   const userName =
     profileName ||
@@ -142,6 +145,8 @@ export default function AppLayout() {
         hasPaidPlan={hasPaidPlan}
         onLogout={handleLogout}
       />
+
+      {showTour && <OnboardingTour onClose={finishTour} />}
     </div>
   )
 }
