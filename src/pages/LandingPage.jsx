@@ -1040,9 +1040,45 @@ export default function LandingPage() {
           margin-top: 20px;
         }
 
+        .about-section {
+          padding: 100px 0;
+        }
+
+        .about-card {
+          max-width: 820px;
+          margin: 0 auto;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 28px;
+          padding: 48px 52px;
+        }
+
+        .about-title {
+          font-size: clamp(22px, 3vw, 30px);
+          font-weight: 800;
+          margin: 16px 0 20px;
+          letter-spacing: -0.03em;
+        }
+
+        .about-text {
+          font-size: 16px;
+          color: #94a3b8;
+          line-height: 1.8;
+          margin: 0;
+        }
+
+        .about-entity {
+          margin-top: 24px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(255,255,255,0.07);
+          font-size: 13px;
+          color: #475569;
+          line-height: 1.6;
+        }
+
         .footer {
           border-top: 1px solid rgba(255,255,255,0.06);
-          padding: 40px 0;
+          padding: 40px 0 0;
         }
 
         .footer-inner {
@@ -1051,6 +1087,7 @@ export default function LandingPage() {
           align-items: center;
           flex-wrap: wrap;
           gap: 20px;
+          padding-bottom: 28px;
         }
 
         .footer-brand {
@@ -1084,6 +1121,15 @@ export default function LandingPage() {
           color: #334155;
           font-size: 13px;
           text-decoration: none;
+        }
+
+        .footer-legal {
+          border-top: 1px solid rgba(255,255,255,0.04);
+          padding: 14px 0;
+          text-align: center;
+          font-size: 11.5px;
+          color: #1e293b;
+          letter-spacing: 0.01em;
         }
 
         @media (max-width: 980px) {
@@ -1739,6 +1785,24 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className="about-section">
+        <div className="container">
+          <div className="about-card">
+            <div className="section-label">Sobre nós</div>
+            <h2 className="about-title">Sobre a Lembrei</h2>
+            <p className="about-text">
+              A Lembrei é uma plataforma de automação via WhatsApp criada para ajudar empresas a
+              enviar lembretes de pagamento, notificações para clientes e mensagens de cobrança de
+              forma simples e organizada. A plataforma Lembrei é operada por{' '}
+              <strong style={{ color: '#cbd5e1' }}>66.459.618 LUAN WINICIUS MOREIRA</strong>.
+            </p>
+            <p className="about-entity">
+              Lembrei é o nome comercial da plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="final-cta">
         <div className="hero-glow" style={{ width: 600, height: 400, background: 'rgba(91,75,255,0.2)', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }} />
         <div className="container">
@@ -1781,6 +1845,10 @@ export default function LandingPage() {
             <Link to="/privacidade">Privacidade</Link>
             <Link to="/contato">Contato</Link>
           </div>
+        </div>
+
+        <div className="footer-legal container">
+          Lembrei é uma plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
         </div>
       </footer>
     </div>

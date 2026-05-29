@@ -3,6 +3,11 @@ export default function Privacidade() {
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 20px', color: '#1e293b', lineHeight: 1.7 }}>
       <h1>Política de Privacidade</h1>
 
+      <p style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 20px', fontSize: 14, color: '#475569' }}>
+        <strong>Operadora:</strong> Lembrei é o nome comercial da plataforma operada por{' '}
+        <strong>66.459.618 LUAN WINICIUS MOREIRA</strong>.
+      </p>
+
       <p>
         A sua privacidade é importante para nós. É política do Lembrei respeitar a sua privacidade em relação a qualquer informação sua que possamos coletar no site.
       </p>
