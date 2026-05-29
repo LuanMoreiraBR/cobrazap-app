@@ -5,6 +5,7 @@ import {
   Users,
   Wallet,
   BellRing,
+  FileText,
   CreditCard,
   PlugZap,
   LogOut,
@@ -26,6 +27,7 @@ const drawerGroups = [
       { to: '/app/clientes', label: 'Clientes', icon: Users },
       { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
       { to: '/app/automacoes', label: 'Automações', icon: BellRing },
+      { to: '/app/templates', label: 'Templates', icon: FileText },
     ],
   },
   {

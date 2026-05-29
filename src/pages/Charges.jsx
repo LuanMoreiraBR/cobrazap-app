@@ -51,6 +51,7 @@ import {
 } from '../utils/reportExport'
 
 import { getUsageSummary } from '../services/usageService'
+import { getTemplates } from '../services/templatesService'
 
 function getTodayInputDate() {
   const now = new Date()
@@ -295,6 +296,8 @@ export default function Charges() {
   const [recurrenceMonths, setRecurrenceMonths] = useState(12)
 
   const [mpAccount, setMpAccount] = useState(null)
+  const [templates, setTemplates] = useState([])
+  const [showTemplates, setShowTemplates] = useState(false)
   const [loading, setLoading] = useState(true)
   const [usage, setUsage] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -309,13 +312,16 @@ export default function Charges() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [clientsData, chargesData, supportContactsData, mpAccountData] =
+        const [clientsData, chargesData, supportContactsData, mpAccountData, templatesData] =
           await Promise.all([
             getClients(user.id),
             getCharges(user.id),
             getWhatsappSupportContacts(user.id),
             getPaymentAccount(user.id),
+            getTemplates(user.id).catch(() => []),
           ])
+
+        setTemplates(templatesData)
 
         setClients(clientsData)
         setCharges(chargesData)
@@ -1116,13 +1122,44 @@ export default function Charges() {
             <option value="urgent">Tom urgente</option>
           </select>
 
-          <input
-            type="text"
-            placeholder="Descrição"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="input"
-          />
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Descrição"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              className="input"
+            />
+            {templates.length > 0 && (
+              <div className="relative mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowTemplates((v) => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#5B4BFF] transition hover:bg-[#5B4BFF]/10"
+                >
+                  Usar template
+                </button>
+                {showTemplates && (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setForm({ ...form, description: t.content })
+                          setShowTemplates(false)
+                        }}
+                        className="flex w-full flex-col px-4 py-3 text-left transition hover:bg-[#5B4BFF]/5 border-b border-slate-100 last:border-b-0"
+                      >
+                        <span className="text-sm font-semibold text-[#070D2D]">{t.name}</span>
+                        <span className="mt-0.5 text-xs text-slate-500 line-clamp-1">{t.content}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <input
             type="number"

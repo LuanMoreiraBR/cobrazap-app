@@ -19,6 +19,7 @@ import AdminUserDetail from '../pages/AdminUserDetail'
 import MyPlan from '../pages/MyPlan'
 import PaymentReturn from '../pages/PaymentReturn'
 import ResetPassword from '../pages/ResetPassword'
+import Templates from '../pages/Templates'
 
 export const router = createBrowserRouter([
   {
@@ -98,6 +99,7 @@ export const router = createBrowserRouter([
       { path: 'clientes', element: <Clients /> },
       { path: 'cobrancas', element: <Charges /> },
       { path: 'automacoes', element: <Automations /> },
+      { path: 'templates', element: <Templates /> },
       { path: 'configuracoes', element: <Settings /> },
       { path: 'plano', element: <MyPlan /> },
     ],

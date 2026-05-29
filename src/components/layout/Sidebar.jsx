@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Wallet, BellRing, CreditCard, PlugZap, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Wallet, BellRing, FileText, CreditCard, PlugZap, LogOut } from 'lucide-react'
 
 const navGroups = [
   {
@@ -9,6 +9,7 @@ const navGroups = [
       { to: '/app/clientes', label: 'Clientes', icon: Users },
       { to: '/app/cobrancas', label: 'Cobranças', icon: Wallet },
       { to: '/app/automacoes', label: 'Automações', icon: BellRing },
+      { to: '/app/templates', label: 'Templates', icon: FileText },
     ],
   },
   {
