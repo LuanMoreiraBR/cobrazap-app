@@ -10,7 +10,9 @@ import {
   PlugZap,
   LogOut,
   Menu,
+  Smartphone,
 } from 'lucide-react'
+import InstallModal from '../InstallModal'
 
 const bottomItems = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -41,6 +43,7 @@ const drawerGroups = [
 
 export default function BottomNav({ userName, hasPaidPlan, onLogout }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [showInstall, setShowInstall] = useState(false)
 
   function closeDrawer() {
     setDrawerOpen(false)
@@ -178,8 +181,16 @@ export default function BottomNav({ userName, hasPaidPlan, onLogout }) {
               <p className="text-xs text-slate-400 capitalize opacity-40">Cobrador</p>
               <button
                 type="button"
+                onClick={() => { setShowInstall(true); closeDrawer() }}
+                className="mt-2 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[#5B4BFF] hover:bg-[#5B4BFF]/10 transition"
+              >
+                <Smartphone size={16} />
+                Instalar app
+              </button>
+              <button
+                type="button"
                 onClick={onLogout}
-                className="mt-3 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition"
+                className="mt-1 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition"
               >
                 <LogOut size={16} />
                 Sair
@@ -188,6 +199,8 @@ export default function BottomNav({ userName, hasPaidPlan, onLogout }) {
           </div>
         </div>
       )}
+
+      {showInstall && <InstallModal onClose={() => setShowInstall(false)} />}
     </>
   )
 }

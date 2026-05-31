@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getPlatformPlans } from '../services/platformBillingService'
+import InstallModal from '../components/InstallModal'
 
 export default function LandingPage() {
   const [plans, setPlans] = useState([])
+  const [showInstall, setShowInstall] = useState(false)
 
   useEffect(() => {
     getPlatformPlans().then(setPlans).catch(() => {})
@@ -363,6 +365,29 @@ export default function LandingPage() {
           min-height: 40px;
           padding: 10px 20px;
           font-size: 14px;
+        }
+
+        .btn-install {
+          min-height: 40px;
+          border-radius: 14px;
+          padding: 9px 14px;
+          font-size: 13px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-family: 'Plus Jakarta Sans', sans-serif;
+          font-weight: 600;
+          background: transparent;
+          color: #9c8dff;
+          border: 1.5px solid rgba(91,75,255,0.35);
+          transition: all 0.2s;
+          white-space: nowrap;
+        }
+
+        .btn-install:hover {
+          background: rgba(91,75,255,0.12);
+          border-color: rgba(91,75,255,0.6);
         }
 
         .hero {
@@ -1521,11 +1546,16 @@ export default function LandingPage() {
           </div>
 
           <div className="nav-actions">
+            <button type="button" onClick={() => setShowInstall(true)} className="btn-install">
+              📱 Instalar app
+            </button>
             <a href="/login" className="btn-outline">Entrar</a>
             <a href="/cadastro" className="btn-primary">Começar</a>
           </div>
         </div>
       </nav>
+
+      {showInstall && <InstallModal onClose={() => setShowInstall(false)} />}
 
       <section className="hero">
         <div className="hero-glow" style={{ width: 600, height: 600, background: 'rgba(91,75,255,0.25)', top: -200, left: -100 }} />

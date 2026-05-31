@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Wallet, BellRing, FileText, CreditCard, PlugZap, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Wallet, BellRing, FileText, CreditCard, PlugZap, LogOut, Smartphone } from 'lucide-react'
+import InstallModal from '../InstallModal'
 
 const navGroups = [
   {
@@ -22,6 +24,8 @@ const navGroups = [
 ]
 
 export default function Sidebar({ userName, hasPaidPlan, onLogout }) {
+  const [showInstall, setShowInstall] = useState(false)
+
   return (
     <>
       {/* Desktop sidebar — flex child in the h-screen container */}
@@ -95,14 +99,24 @@ export default function Sidebar({ userName, hasPaidPlan, onLogout }) {
           <p className="text-xs text-slate-400 capitalize opacity-40">Cobrador</p>
           <button
             type="button"
+            onClick={() => setShowInstall(true)}
+            className="mt-2 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[#5B4BFF] hover:bg-[#5B4BFF]/10 transition"
+          >
+            <Smartphone size={16} />
+            Instalar app
+          </button>
+          <button
+            type="button"
             onClick={onLogout}
-            className="mt-3 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition"
+            className="mt-1 w-full flex items-center justify-start gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition"
           >
             <LogOut size={16} />
             Sair
           </button>
         </div>
       </aside>
+
+      {showInstall && <InstallModal onClose={() => setShowInstall(false)} />}
 
       {/* Mobile top bar — fixed overlay */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-30 h-14 flex items-center justify-center bg-white border-b border-slate-200">
