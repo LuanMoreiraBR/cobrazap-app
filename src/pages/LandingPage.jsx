@@ -1576,7 +1576,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="hero-copy hero-animate-3">
-              O Lembrei ajuda autônomos e pequenos negócios a organizar cobranças e enviar mensagens profissionais no WhatsApp — sem constrangimento, sem esquecimento.
+              O Lembrei App ajuda autônomos e pequenos negócios a organizar cobranças e enviar mensagens profissionais no WhatsApp — sem constrangimento, sem esquecimento.
             </p>
 
             <div className="hero-actions hero-animate-4">
@@ -1722,7 +1722,7 @@ export default function LandingPage() {
           <div className="section-head" style={{ marginBottom: 0 }}>
             <div className="section-label">Depoimentos</div>
             <h2 className="section-title">Quem usa, recomenda</h2>
-            <p className="section-subtitle">Veja o que nossos usuários estão falando sobre o Lembrei</p>
+            <p className="section-subtitle">Veja o que nossos usuários estão falando sobre o Lembrei App</p>
           </div>
         </div>
 
@@ -1754,7 +1754,7 @@ export default function LandingPage() {
           <div>
             <div className="section-label" style={{ marginBottom: 20 }}>Para quem é</div>
             <h2 className="audience-title">Feito para quem presta serviço e precisa receber</h2>
-            <p className="audience-copy">Se você tem clientes, emite cobranças e usa o WhatsApp, o Lembrei foi feito para você.</p>
+            <p className="audience-copy">Se você tem clientes, emite cobranças e usa o WhatsApp, o Lembrei App foi feito para você.</p>
           </div>
 
           <div className="audience-pills">
@@ -1819,15 +1819,15 @@ export default function LandingPage() {
         <div className="container">
           <div className="about-card">
             <div className="section-label">Sobre nós</div>
-            <h2 className="about-title">Sobre a Lembrei</h2>
+            <h2 className="about-title">Sobre o Lembrei App</h2>
             <p className="about-text">
-              A Lembrei é uma plataforma de automação via WhatsApp criada para ajudar empresas a
+              O Lembrei App é uma plataforma de automação via WhatsApp criada para ajudar empresas a
               enviar lembretes de pagamento, notificações para clientes e mensagens de cobrança de
-              forma simples e organizada. A plataforma Lembrei é operada por{' '}
+              forma simples e organizada. O Lembrei App é operado por{' '}
               <strong style={{ color: '#cbd5e1' }}>66.459.618 LUAN WINICIUS MOREIRA</strong>.
             </p>
             <p className="about-entity">
-              Lembrei é o nome comercial da plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
+              Lembrei App é o nome comercial da plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
             </p>
           </div>
         </div>
@@ -1862,12 +1862,12 @@ export default function LandingPage() {
       <footer className="footer">
         <div className="container footer-inner">
           <div className="footer-brand">
-            <img src="/icon-lembrei.png" alt="Lembrei" />
-            <span>Lembrei</span>
+            <img src="/icon-lembrei.png" alt="Lembrei App" />
+            <span>Lembrei App</span>
           </div>
 
           <div className="footer-copy">
-            © {new Date().getFullYear()} Lembrei. Feito para autônomos brasileiros.
+            © {new Date().getFullYear()} Lembrei App. Feito para autônomos brasileiros.
           </div>
 
           <div className="footer-links">
@@ -1878,7 +1878,7 @@ export default function LandingPage() {
         </div>
 
         <div className="footer-legal container">
-          Lembrei é uma plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
+          Lembrei App é uma plataforma operada por 66.459.618 LUAN WINICIUS MOREIRA.
         </div>
       </footer>
     </div>
