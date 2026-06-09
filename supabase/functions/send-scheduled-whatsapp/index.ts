@@ -10,7 +10,7 @@ const corsHeaders = {
 const BUSINESS_TIME_ZONE = 'America/Sao_Paulo'
 const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 18
-const FREE_TRIAL_MESSAGE_LIMIT = 10
+const FREE_TRIAL_MESSAGE_LIMIT = 15
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

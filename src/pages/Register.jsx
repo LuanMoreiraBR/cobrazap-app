@@ -38,7 +38,7 @@ export default function Register() {
           <img src="/icon-lembrei.png" alt="Lembrei" className="h-11 w-11 rounded-2xl" />
           <div>
             <h1 className="text-3xl font-bold text-[#070D2D]">Criar conta</h1>
-            <p className="text-sm text-slate-500">Comece com 10 mensagens grátis.</p>
+            <p className="text-sm text-slate-500">Comece com 15 mensagens grátis.</p>
           </div>
         </div>
 

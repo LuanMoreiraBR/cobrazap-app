@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { isPlatformAdmin } from '../services/adminService'
@@ -7,7 +7,15 @@ import { requestPasswordReset } from '../services/authService'
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { signIn } = useAuth()
+  const { signIn, isAuthenticated, loading: authLoading } = useAuth()
+
+  // Mantém o usuário logado: se já existe sessão (ex.: reabriu o PWA), vai
+  // direto para o app em vez de mostrar o formulário de login de novo.
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate(location.state?.from || '/app', { replace: true })
+    }
+  }, [authLoading, isAuthenticated, location.state, navigate])
 
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)

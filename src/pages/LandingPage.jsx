@@ -1770,7 +1770,7 @@ export default function LandingPage() {
           <div className="section-head">
             <div className="section-label">Planos</div>
             <h2 className="section-title">Escolha o plano ideal para o seu momento</h2>
-            <p className="section-subtitle">Comece com 10 mensagens grátis e escolha um plano quando estiver pronto para escalar..</p>
+            <p className="section-subtitle">Comece com 15 mensagens grátis e escolha um plano quando estiver pronto para escalar..</p>
           </div>
 
           <div className="pricing-grid">

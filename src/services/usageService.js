@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 import { getExtraMessageCredits } from './platformBillingService'
 
-export const FREE_TRIAL_MESSAGE_LIMIT = 10
+export const FREE_TRIAL_MESSAGE_LIMIT = 15
 export const FREE_TRIAL_CLIENT_LIMIT = 10
 
 function getCurrentYearMonth() {

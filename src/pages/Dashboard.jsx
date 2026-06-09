@@ -278,14 +278,14 @@ export default function Dashboard() {
 
       {usageInfo.hasActivePlan && usageInfo.isNearLimit ? (
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <strong>Atenção:</strong> você está perto do limite de mensagens do mês.
+          <strong>Atenção:</strong> você está perto do limite de mensagens do seu plano.
           Você pode comprar créditos extras para continuar enviando cobranças.
         </div>
       ) : null}
 
       {usageInfo.hasActivePlan && usageInfo.isAtLimit ? (
         <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <strong>Limite atingido:</strong> suas mensagens do mês acabaram.
+          <strong>Limite atingido:</strong> suas mensagens do plano acabaram.
           Compre créditos extras ou altere seu plano para continuar enviando.
         </div>
       ) : null}

@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const BUSINESS_TIME_ZONE = 'America/Sao_Paulo'
-const FREE_TRIAL_MESSAGE_LIMIT = 10
+const FREE_TRIAL_MESSAGE_LIMIT = 15
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
