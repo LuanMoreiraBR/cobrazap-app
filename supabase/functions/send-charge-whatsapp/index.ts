@@ -237,9 +237,13 @@ async function canSendMessageForUser(supabase: any, userId: string) {
   const hasActivePlan =
     subscription?.status === 'active' && !periodExpired
 
-  const planMessageLimit = hasActivePlan
-    ? Number(subscription?.plan?.max_messages_per_month || 0)
-    : FREE_TRIAL_MESSAGE_LIMIT
+  // O plano gratuito (preço 0) é um trial ÚNICO: a cota não renova a cada mês.
+  const isFreePlan =
+    !hasActivePlan || Number(subscription?.plan?.price ?? 0) === 0
+
+  const planMessageLimit = isFreePlan
+    ? Number(subscription?.plan?.max_messages_per_month) || FREE_TRIAL_MESSAGE_LIMIT
+    : Number(subscription?.plan?.max_messages_per_month || 0)
 
   const extraCredits = await getExtraMessageCredits(supabase, userId)
   const totalMessageLimit = planMessageLimit + extraCredits
@@ -251,23 +255,17 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     }
   }
 
-  const { data: usage, error: usageError } = await supabase
-    .from('user_monthly_usage')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('year_month', yearMonth)
-    .maybeSingle()
-
-  if (usageError) throw usageError
-
-  const messagesSent = Number(usage?.messages_sent || 0)
+  // Pago: cota mensal (reseta por mês). Gratuito: total acumulado (vitalício).
+  const messagesSent = isFreePlan
+    ? await getLifetimeMessagesSent(supabase, userId)
+    : await getMonthlyMessagesSent(supabase, userId, yearMonth)
 
   if (messagesSent >= totalMessageLimit) {
     return {
       allowed: false,
-      reason: hasActivePlan
-        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}. Compre créditos extras para continuar.`
-        : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens do plano gratuito. Escolha um plano pago para continuar enviando cobranças.`,
+      reason: isFreePlan
+        ? `Você usou suas ${planMessageLimit} mensagens do plano gratuito. Escolha um plano pago para continuar enviando cobranças.`
+        : `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}. Compre créditos extras para continuar.`,
     }
   }
 
@@ -275,6 +273,37 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     allowed: true,
     reason: 'Dentro do limite.',
   }
+}
+
+async function getMonthlyMessagesSent(
+  supabase: any,
+  userId: string,
+  yearMonth: string,
+) {
+  const { data, error } = await supabase
+    .from('user_monthly_usage')
+    .select('messages_sent')
+    .eq('user_id', userId)
+    .eq('year_month', yearMonth)
+    .maybeSingle()
+
+  if (error) throw error
+
+  return Number(data?.messages_sent || 0)
+}
+
+async function getLifetimeMessagesSent(supabase: any, userId: string) {
+  const { data, error } = await supabase
+    .from('user_monthly_usage')
+    .select('messages_sent')
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  return (data || []).reduce(
+    (total: number, row: any) => total + Number(row.messages_sent || 0),
+    0,
+  )
 }
 
 async function incrementMessageUsage({

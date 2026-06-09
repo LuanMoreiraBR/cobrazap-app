@@ -58,6 +58,21 @@ export async function getMonthlyUsage(userId) {
   )
 }
 
+// Total de mensagens enviadas em todos os meses (cota acumulada do trial).
+export async function getLifetimeMessagesUsed(userId) {
+  const { data, error } = await supabase
+    .from('user_monthly_usage')
+    .select('messages_sent')
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  return (data || []).reduce(
+    (total, row) => total + Number(row.messages_sent || 0),
+    0,
+  )
+}
+
 export async function getClientUsage(userId) {
   const { count, error } = await supabase
     .from('clients')
@@ -70,10 +85,11 @@ export async function getClientUsage(userId) {
 }
 
 export async function getUsageSummary(userId) {
-  const [subscription, monthlyUsage, clientsUsed, rawExtraCredits] =
+  const [subscription, monthlyUsage, lifetimeMessagesUsed, clientsUsed, rawExtraCredits] =
     await Promise.all([
       getUserSubscriptionWithPlan(userId),
       getMonthlyUsage(userId),
+      getLifetimeMessagesUsed(userId),
       getClientUsage(userId),
       getExtraMessageCredits(userId),
     ])
@@ -81,15 +97,21 @@ export async function getUsageSummary(userId) {
   const hasActivePlan = isSubscriptionActive(subscription)
   const plan = hasActivePlan ? subscription?.plan : null
 
-  const messageLimit = hasActivePlan
-    ? Number(plan?.max_messages_per_month || 0)
-    : FREE_TRIAL_MESSAGE_LIMIT
+  // Plano gratuito (preço 0) é um trial único: cota acumulada, não renova por mês.
+  const isFreePlan = !hasActivePlan || Number(plan?.price ?? 0) === 0
+
+  const messageLimit = isFreePlan
+    ? Number(plan?.max_messages_per_month) || FREE_TRIAL_MESSAGE_LIMIT
+    : Number(plan?.max_messages_per_month || 0)
 
   const clientLimit = hasActivePlan
     ? Number(plan?.max_clients || 0)
     : FREE_TRIAL_CLIENT_LIMIT
 
-  const messagesUsed = Number(monthlyUsage?.messages_sent || 0)
+  // Gratuito conta o total acumulado; pago conta apenas o mês atual.
+  const messagesUsed = isFreePlan
+    ? Number(lifetimeMessagesUsed || 0)
+    : Number(monthlyUsage?.messages_sent || 0)
 
   // Créditos extras só contam se o plano estiver ativo.
   // Se o plano estiver inativo, os créditos continuam no banco,

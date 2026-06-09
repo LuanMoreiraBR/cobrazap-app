@@ -124,23 +124,42 @@ async function canSendMessageForUser(supabase: any, userId: string) {
   }
 
   const hasActivePlan = subscription?.status === 'active' && !periodExpired
-  const planMessageLimit = hasActivePlan
-    ? Number(subscription?.plan?.max_messages_per_month || 0)
-    : FREE_TRIAL_MESSAGE_LIMIT
+
+  // Plano gratuito (preço 0): trial único, cota acumulada (não renova por mês).
+  const isFreePlan =
+    !hasActivePlan || Number(subscription?.plan?.price ?? 0) === 0
+
+  const planMessageLimit = isFreePlan
+    ? Number(subscription?.plan?.max_messages_per_month) || FREE_TRIAL_MESSAGE_LIMIT
+    : Number(subscription?.plan?.max_messages_per_month || 0)
 
   const extraCredits = await getExtraMessageCredits(supabase, userId)
   const totalMessageLimit = planMessageLimit + extraCredits
 
   if (!totalMessageLimit) return { allowed: true }
 
-  const { data: usage } = await supabase
-    .from('user_monthly_usage')
-    .select('messages_sent')
-    .eq('user_id', userId)
-    .eq('year_month', yearMonth)
-    .maybeSingle()
+  let messagesSent = 0
 
-  const messagesSent = Number(usage?.messages_sent || 0)
+  if (isFreePlan) {
+    const { data: usageRows } = await supabase
+      .from('user_monthly_usage')
+      .select('messages_sent')
+      .eq('user_id', userId)
+
+    messagesSent = (usageRows || []).reduce(
+      (total: number, row: any) => total + Number(row.messages_sent || 0),
+      0,
+    )
+  } else {
+    const { data: usage } = await supabase
+      .from('user_monthly_usage')
+      .select('messages_sent')
+      .eq('user_id', userId)
+      .eq('year_month', yearMonth)
+      .maybeSingle()
+
+    messagesSent = Number(usage?.messages_sent || 0)
+  }
 
   return { allowed: messagesSent < totalMessageLimit }
 }

@@ -203,9 +203,13 @@ async function canSendMessageForUser(supabase: any, userId: string) {
   const hasActivePlan =
     subscription?.status === 'active' && !periodExpired
 
-  const planMessageLimit = hasActivePlan
-    ? Number(subscription?.plan?.max_messages_per_month || 0)
-    : FREE_TRIAL_MESSAGE_LIMIT
+  // Plano gratuito (preço 0): trial único, cota acumulada (não renova por mês).
+  const isFreePlan =
+    !hasActivePlan || Number(subscription?.plan?.price ?? 0) === 0
+
+  const planMessageLimit = isFreePlan
+    ? Number(subscription?.plan?.max_messages_per_month) || FREE_TRIAL_MESSAGE_LIMIT
+    : Number(subscription?.plan?.max_messages_per_month || 0)
 
   const extraCredits = await getExtraMessageCredits(supabase, userId)
   const totalMessageLimit = planMessageLimit + extraCredits
@@ -217,23 +221,39 @@ async function canSendMessageForUser(supabase: any, userId: string) {
     }
   }
 
-  const { data: usage, error: usageError } = await supabase
-    .from('user_monthly_usage')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('year_month', yearMonth)
-    .maybeSingle()
+  let messagesSent = 0
 
-  if (usageError) throw usageError
+  if (isFreePlan) {
+    const { data: usageRows, error: usageError } = await supabase
+      .from('user_monthly_usage')
+      .select('messages_sent')
+      .eq('user_id', userId)
 
-  const messagesSent = Number(usage?.messages_sent || 0)
+    if (usageError) throw usageError
+
+    messagesSent = (usageRows || []).reduce(
+      (total: number, row: any) => total + Number(row.messages_sent || 0),
+      0,
+    )
+  } else {
+    const { data: usage, error: usageError } = await supabase
+      .from('user_monthly_usage')
+      .select('messages_sent')
+      .eq('user_id', userId)
+      .eq('year_month', yearMonth)
+      .maybeSingle()
+
+    if (usageError) throw usageError
+
+    messagesSent = Number(usage?.messages_sent || 0)
+  }
 
   if (messagesSent >= totalMessageLimit) {
     return {
       allowed: false,
-      reason: hasActivePlan
-        ? `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}. Compre créditos extras para continuar.`
-        : `Você usou suas ${FREE_TRIAL_MESSAGE_LIMIT} mensagens do plano gratuito. Escolha um plano pago para continuar enviando cobranças.`,
+      reason: isFreePlan
+        ? `Você usou suas ${planMessageLimit} mensagens do plano gratuito. Escolha um plano pago para continuar enviando cobranças.`
+        : `Limite mensal de mensagens atingido: ${messagesSent}/${totalMessageLimit}. Compre créditos extras para continuar.`,
     }
   }
 
