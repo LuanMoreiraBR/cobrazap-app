@@ -17,6 +17,10 @@ export default function Login() {
     }
   }, [authLoading, isAuthenticated, location.state, navigate])
 
+  // Vindo do cadastro (/login?created=1): mostra aviso para confirmar o email.
+  const justCreated =
+    new URLSearchParams(location.search).get('created') === '1'
+
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -133,6 +137,13 @@ export default function Login() {
           )
         ) : (
           <>
+            {justCreated ? (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                <strong>Conta criada com sucesso!</strong> Enviamos um link de
+                confirmação para o seu email. Confirme para acessar sua conta.
+              </div>
+            ) : null}
+
             <form onSubmit={handleSubmit} className="mt-8 space-y-4">
               <input
                 type="email"
