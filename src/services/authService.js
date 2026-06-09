@@ -11,22 +11,52 @@ export async function signUp({ name, email, password }) {
         name: cleanName,
         full_name: cleanName,
       },
+      // Com confirmação de email ativada, o link do email redireciona o
+      // cliente para a tela de login (e não para a home do app).
+      emailRedirectTo: `${window.location.origin}/login`,
     },
   })
 
   if (error) throw error
 
-  if (data.user?.id) {
+  // Quando a confirmação de email está ativada, o signUp NÃO retorna uma
+  // sessão, então um insert em `profiles` rodaria sem autenticação e seria
+  // bloqueado pelo RLS — o que fazia o cadastro exibir "erro" mesmo tendo
+  // criado a conta. Só criamos o perfil aqui quando já há sessão; caso
+  // contrário ele é garantido no primeiro login (ensureProfile).
+  if (data.session && data.user?.id) {
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: data.user.id,
       name: cleanName || 'Usuário',
       email,
     })
 
-    if (profileError) throw profileError
+    if (profileError) {
+      console.error('Erro ao criar perfil:', profileError.message)
+    }
   }
 
   return data
+}
+
+async function ensureProfile(user) {
+  if (!user?.id) return
+
+  const { error } = await supabase.from('profiles').upsert(
+    {
+      id: user.id,
+      name:
+        user.user_metadata?.name ||
+        user.user_metadata?.full_name ||
+        'Usuário',
+      email: user.email,
+    },
+    { onConflict: 'id', ignoreDuplicates: true },
+  )
+
+  if (error) {
+    console.error('Erro ao garantir perfil:', error.message)
+  }
 }
 
 export async function signIn({ email, password }) {
@@ -36,6 +66,11 @@ export async function signIn({ email, password }) {
   })
 
   if (error) throw error
+
+  // Garante o perfil para contas criadas enquanto a confirmação de email
+  // estava pendente (quando o insert no cadastro foi pulado).
+  await ensureProfile(data.user)
+
   return data
 }
 

@@ -1,11 +1,11 @@
-const CACHE_NAME = 'lembrei-pwa-v6'
+const CACHE_NAME = 'lembrei-pwa-v7'
 
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/favicon.png',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-512-maskable.png',
+  '/icon-192-v2.png',
+  '/icon-512-v2.png',
+  '/icon-512-maskable-v2.png',
 ]
 
 self.addEventListener('install', (event) => {
@@ -35,8 +35,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Lembrei'
   const options = {
     body: data.body || 'Nova notificação',
-    icon: '/icon-512-maskable.png',
-    badge: '/icon-192.png',
+    icon: '/icon-512-maskable-v2.png',
+    badge: '/icon-192-v2.png',
     data: { url: data.url || '/app' },
     requireInteraction: false,
   }
