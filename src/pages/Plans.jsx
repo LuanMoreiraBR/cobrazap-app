@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -35,6 +35,20 @@ export default function Plans() {
   const hasActiveSubscription = isSubscriptionActive(subscription)
   const hasFreePlan = hasActiveSubscription && Number(subscription?.plan?.price ?? -1) === 0
   const showPlanCards = !hasActiveSubscription || hasFreePlan
+
+  // Rola direto até os cards dos planos ao carregar (em vez de parar no topo),
+  // já que é onde o usuário escolhe/ativa o plano.
+  const plansRef = useRef(null)
+
+  useEffect(() => {
+    if (loading || !showPlanCards) return
+
+    const timer = setTimeout(() => {
+      plansRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+
+    return () => clearTimeout(timer)
+  }, [loading, showPlanCards])
 
   useEffect(() => {
     async function load() {
@@ -345,7 +359,7 @@ export default function Plans() {
         ) : null}
 
         {showPlanCards ? (
-        <section>
+        <section ref={plansRef} className="scroll-mt-4">
           <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5B4BFF]">
